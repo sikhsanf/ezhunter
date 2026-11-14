@@ -65,6 +65,9 @@
   #pause, #dead { display: none; }
   #coopPill { position: absolute; left: 22px; top: 16px; padding: 6px 12px; font-size: 12px; letter-spacing: .14em; text-transform: uppercase;
     pointer-events: auto; cursor: pointer; color: var(--gold); }
+  #musicPill { position: absolute; left: 22px; top: 54px; padding: 4px 11px; font-size: 15px; pointer-events: auto; cursor: pointer; color: var(--gold); }
+  #musicPill.off { opacity: .45; text-decoration: line-through; }
+  body.touch #musicPill { left: auto; right: 132px; top: 38px; font-size: 13px; padding: 3px 9px; }
   #coopPill.on { border-color: #4aa3ff; color: #bfe0ff; box-shadow: 0 0 12px rgba(74, 163, 255, .45); }
   #coopPanel { display: none; position: fixed; inset: 0; z-index: 4; align-items: center; justify-content: center; background: rgba(0, 0, 0, .6); padding: 16px; }
   #coopBox { width: min(420px, 100%); background: linear-gradient(180deg, rgba(26, 20, 15, .97), rgba(10, 8, 6, .97)); border: 1px solid rgba(232, 201, 138, .5);
@@ -183,6 +186,7 @@
   </div>
   <div id="cross"></div>
   <div id="coopPill" class="panel">Co-op</div>
+  <div id="musicPill" class="panel" title="Music on / off (M)">&#9835;</div>
   <div id="target" class="panel"><span id="tname"></span><div class="track"><div id="thp" class="fill"></div></div></div>
   <div id="stance">Normal stance</div>
   <div id="day" class="panel">Day 1</div>
@@ -226,7 +230,7 @@
     <b>E &middot; 1 2 3 / Wheel</b><span>Use skill &middot; select skill</span>
     <b>Shift / Space / Q</b><span>Sprint / jump / dodge</span>
     <b>F &middot; P</b><span>Eat meat &middot; save (also autosaves)</span>
-    <b>O</b><span>Co-op: create or join a room (up to 3 hunters)</span>
+    <b>O &middot; M</b><span>Co-op room (up to 3 hunters) &middot; music on / off</span>
   </div>
   <div class="touchhint">Left thumb moves (push to the edge to sprint) &middot; right thumb looks<br>Stance readies your weapon &middot; hold Attack to chain, fire or draw &middot; tap a skill, then Cast</div>
   <div class="go" style="animation:none;opacity:.75;font-size:12px">Choose a class to begin</div>

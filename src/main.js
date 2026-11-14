@@ -7,6 +7,7 @@ import { createWorld, heightAt, WORLD_R, MAPS } from './world.js';
 import { TYPES, MonsterManager } from './monsters.js';
 import { Sfx } from './audio.js';
 import { createCoop } from './net.js';
+import { Music } from './music.js';
 
 const $ = (id) => document.getElementById(id);
 const DAY_LEN = 300; // seconds per full day/night cycle
@@ -40,6 +41,20 @@ addEventListener('resize', () => {
 const world = createWorld(scene);
 world.load('vale');
 const sfx = new Sfx();
+const music = new Music();
+try { music.muted = localStorage.getItem('ezhunter-music') === 'off'; } catch { /* storage unavailable */ }
+/** Browsers only allow sound after a tap, click or key press, so the title theme starts on the first one. */
+function wakeAudio() {
+  sfx.init(); music.init(sfx.ctx);
+  if (sfx.ctx && sfx.ctx.state === 'suspended') sfx.ctx.resume();
+}
+for (const ev of ['pointerdown', 'keydown', 'touchstart']) addEventListener(ev, wakeAudio, { capture: true, passive: true });
+function toggleMusic() {
+  music.setMuted(!music.muted);
+  try { localStorage.setItem('ezhunter-music', music.muted ? 'off' : 'on'); } catch { /* */ }
+  $('musicPill').classList.toggle('off', music.muted);
+  if (game.state === 'playing') msg(music.muted ? 'Music off' : 'Music on');
+}
 
 // ---------------------------------------------------------------- game state
 const player = {
@@ -809,6 +824,7 @@ addEventListener('keydown', (e) => {
   else if (e.code === 'KeyE') cast();
   else if (e.code === 'KeyP') saveGame();
   else if (e.code === 'KeyO') toggleCoop();
+  else if (e.code === 'KeyM') toggleMusic();
   if (e.code === 'Space' || e.code === 'Tab') e.preventDefault();
 });
 addEventListener('keyup', (e) => { keys[e.code] = false; });
@@ -822,6 +838,8 @@ function toggleCoop(open = !game.panel) {
   else { game.paused = false; $('pause').style.display = 'none'; if (!touch.on && game.state === 'playing') lock(); }
 }
 $('coopPill').addEventListener('click', () => toggleCoop());
+$('musicPill').addEventListener('click', toggleMusic);
+$('musicPill').classList.toggle('off', music.muted);
 $('coopClose').addEventListener('click', () => toggleCoop(false));
 $('coopHost').addEventListener('click', () => { coop.setName($('coopName').value); game.paused = false; coop.host(); });
 $('coopJoin').addEventListener('click', () => { coop.setName($('coopName').value); game.paused = false; coop.join($('coopCode').value); });
@@ -855,7 +873,7 @@ document.addEventListener('pointerlockchange', () => {
 });
 function begin(cls, sv) {
   if (game.state !== 'menu') return;
-  sfx.init(); applyStart(cls, sv);
+  wakeAudio(); applyStart(cls, sv);
   $('start').style.display = 'none'; $('hud').style.display = 'block';
   game.state = 'playing'; monsters.seed();
   if (touch.on) {
@@ -1229,6 +1247,12 @@ function update(dt) {
   updatePlayer(dt);
   updateTarget(dt);
   coop.frame(dt);
+  // "in battle" drives the music: locked on to something, or a hostile creature is coming for you
+  let fight = !!game.lock;
+  if (!fight) for (const m of monsters.list) {
+    if (!m.dead && m.dist < 38 && m.def.temper !== 'passive' && (m.state === 'chase' || m.state === 'windup' || m.state === 'strike')) { fight = true; break; }
+  }
+  game.battleT = fight ? 6 : Math.max(0, (game.battleT || 0) - dt); // stay in the battle theme a few seconds after it calms down
   game.saveT = (game.saveT || 0) + dt;
   if (game.saveT > 20) { game.saveT = 0; saveGame(true); }
   // waygates: walk into one to travel to another map
@@ -1266,6 +1290,10 @@ const clock = new THREE.Clock();
 let menuAngle = 0, lastDayT = 0.07;
 function frame() {
   requestAnimationFrame(frame);
+  // soundtrack: title air on the menu, each map's own theme, and the reel while fighting
+  if (game.state !== 'playing') music.play('title', 2, 2.5);
+  else if (game.battleT > 0) music.play('battle', 0.5, 0.9);
+  else music.play(game.mapId, 2.2, 2.6);
   let dt = Math.min(0.05, clock.getDelta());
   if (game.state === 'menu') {
     menuAngle += dt * 0.05;
@@ -1291,7 +1319,7 @@ function frame() {
 }
 const coop = createCoop({ game, player, scene, monsters, MAPS, TYPES, CLASSES, heightAt, msg, localSlam, enemyShot, ghostShot });
 game.coop = coop;
-game.debug = { coop, toggleCoop, attack, cast, selectSpell, eat, dodge, travel, begin, setStance, atkPress, atkRelease, saveGame, readSave, input, bolts, rig: { sword, staff, bowArm, shieldArm, nock },
+game.debug = { coop, toggleCoop, music, attack, cast, selectSpell, eat, dodge, travel, begin, setStance, atkPress, atkRelease, saveGame, readSave, input, bolts, rig: { sword, staff, bowArm, shieldArm, nock },
   /** Advance the simulation by n fixed frames (for automated checks). */
   step: (n = 60) => { for (let i = 0; i < n; i++) { lastDayT = update(1 / 60); updateFx(1 / 60); } updateHud(lastDayT); } };
 selectSpell(0);
