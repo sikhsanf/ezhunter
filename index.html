@@ -63,6 +63,27 @@
   .lore { max-width: 560px; font-size: 14px; line-height: 1.6; opacity: .85; margin-bottom: 24px; }
   .go { font-size: 16px; letter-spacing: .3em; text-transform: uppercase; animation: pulse 1s infinite alternate; color: var(--gold); }
   #pause, #dead { display: none; }
+  #target { left: 50%; top: 58px; transform: translateX(-50%); width: 260px; padding: 6px 10px; display: none; text-align: center; font-size: 12px; letter-spacing: .1em; }
+  #target .track { height: 7px; margin-top: 4px; }
+  #thp { background: linear-gradient(90deg, #7c1410, #e2422c); transition: width .1s linear; }
+  #stance { position: absolute; left: 50%; bottom: 112px; transform: translateX(-50%); font-size: 11px; letter-spacing: .2em; text-transform: uppercase;
+    opacity: .6; text-shadow: 0 1px 3px #000; white-space: nowrap; }
+  #stance.on { opacity: 1; color: var(--gold); }
+  #classes { display: flex; gap: 14px; flex-wrap: wrap; justify-content: center; margin-bottom: 18px; }
+  .card { width: 190px; padding: 14px 12px; border: 1px solid rgba(232, 201, 138, .45); border-radius: 6px; background: rgba(0, 0, 0, .45); cursor: pointer;
+    transition: transform .12s, border-color .12s, background .12s; }
+  .card:hover { transform: translateY(-3px); border-color: var(--gold); background: rgba(232, 201, 138, .12); }
+  .card b { display: block; font-size: 20px; font-weight: 400; letter-spacing: .18em; color: var(--gold); text-transform: uppercase; }
+  .card i { display: block; font-style: normal; font-size: 11px; letter-spacing: .14em; text-transform: uppercase; opacity: .7; margin: 3px 0 8px; }
+  .card span { font-size: 13px; line-height: 1.45; opacity: .9; }
+  #continue { display: none; cursor: pointer; margin-bottom: 18px; padding: 10px 18px; border: 1px solid var(--gold); border-radius: 6px; font-size: 13px; }
+  #start { cursor: default; overflow-y: auto; justify-content: flex-start; padding-top: 4vh; }
+  #bStance { right: 190px; bottom: 24px; width: 60px; height: 60px; border-color: #ffe9a8; }
+  #bBlock { right: 106px; bottom: 172px; width: 62px; height: 62px; display: none; border-color: #aab8c8; }
+  body.touch[data-cls="warrior"] #bBlock { display: flex; }
+  #bSave { left: 10px; top: 84px; width: auto; height: auto; padding: 5px 12px; border-radius: 14px; font-size: 10px; border-width: 1px; }
+  body.touch #target { top: 40px; width: 200px; font-size: 10px; }
+  body.touch #stance { bottom: 62px; font-size: 9px; }
   #chill { position: absolute; inset: 0; opacity: 0; background: radial-gradient(ellipse at center, transparent 35%, rgba(90, 190, 255, .6) 100%); }
   #fade { position: fixed; inset: 0; background: #000; opacity: 0; pointer-events: none; transition: opacity .45s; z-index: 5; }
   #minimap { position: absolute; right: 20px; top: 16px; width: 176px; height: 176px; border-radius: 50%; box-shadow: 0 0 14px rgba(0, 0, 0, .7); }
@@ -136,8 +157,13 @@
     <div id="bJump" class="tbtn">Jump</div>
     <div id="bDodge" class="tbtn">Dodge</div>
     <div id="bEat" class="tbtn">Eat</div>
+    <div id="bStance" class="tbtn">Stance</div>
+    <div id="bBlock" class="tbtn">Block</div>
+    <div id="bSave" class="tbtn">Save</div>
   </div>
   <div id="cross"></div>
+  <div id="target" class="panel"><span id="tname"></span><div class="track"><div id="thp" class="fill"></div></div></div>
+  <div id="stance">Normal stance</div>
   <div id="day" class="panel">Day 1</div>
   <div id="log"></div>
   <div id="bars" class="panel">
@@ -163,20 +189,24 @@
   <h1>ASHEN WILDS</h1>
   <h2>Hunt or starve</h2>
   <div class="lore">Your hunger never stops. Bring down beasts with blade and spell, eat what you kill, and survive as many days as you can.
-    You start at camp in the Verdant Vale. Glowing waygates lead to the Frostfang Tundra and the Cinder Wastes — each with its own beasts: some harmless, some that only fight back, some that hunt <em>you</em>. The mini-map shows gates, camp and nearby creatures.</div>
-  <div class="keys">
-    <b>W A S D</b><span>Move</span>
-    <b>Mouse</b><span>Look</span>
-    <b>Left click</b><span>Sword combo (third hit is heavy)</span>
-    <b>Right click</b><span>Cast selected spell</span>
-    <b>1 2 3 / Wheel</b><span>Select spell</span>
-    <b>Shift</b><span>Sprint</span>
-    <b>Space</b><span>Jump (clears ground slams)</span>
-    <b>Q</b><span>Dodge — brief invulnerability</span>
-    <b>F</b><span>Eat meat</span>
+    You start at camp in the Verdant Vale. Glowing waygates lead to the Frostfang Tundra and the Cinder Wastes — each with its own beasts. In battle stance a target node marks the creature you are facing; in normal stance your gear is put away and you travel lighter.</div>
+  <div id="continue" class="go"></div>
+  <div id="classes">
+    <div class="card" data-cls="warrior"><b>Warrior</b><i>Sword &amp; shield</i><span>Tough. Three-hit sword combo; raise the shield to block.</span></div>
+    <div class="card" data-cls="mage"><b>Mage</b><i>Staff &amp; spells</i><span>Fragile. Homing staff bolts, strong spells, fast mana.</span></div>
+    <div class="card" data-cls="archer"><b>Archer</b><i>Longbow</i><span>Quick. Hold to draw, release to loose; longest reach.</span></div>
   </div>
-  <div class="touchhint">Left thumb moves (push to the edge to sprint) · right thumb looks<br>Hold Attack to chain the combo · tap a spell to select it, then Cast</div>
-  <div class="go">Click or tap to begin the hunt</div>
+  <div class="keys">
+    <b>W A S D / Mouse</b><span>Move / look</span>
+    <b>R</b><span>Battle stance &harr; normal stance (weapons away)</span>
+    <b>Left click</b><span>Attack &mdash; hold: combo, staff fire, or draw the bow</span>
+    <b>Right click</b><span>Warrior: block &middot; Mage / Archer: use skill</span>
+    <b>E &middot; 1 2 3 / Wheel</b><span>Use skill &middot; select skill</span>
+    <b>Shift / Space / Q</b><span>Sprint / jump / dodge</span>
+    <b>F &middot; P</b><span>Eat meat &middot; save (also autosaves)</span>
+  </div>
+  <div class="touchhint">Left thumb moves (push to the edge to sprint) &middot; right thumb looks<br>Stance readies your weapon &middot; hold Attack to chain, fire or draw &middot; tap a skill, then Cast</div>
+  <div class="go" style="animation:none;opacity:.75;font-size:12px">Choose a class to begin</div>
 </div>
 <div id="rotate">Rotate your device to landscape</div>
 <div id="fade"></div>

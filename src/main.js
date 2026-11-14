@@ -44,6 +44,7 @@ const sfx = new Sfx();
 const player = {
   pos: new THREE.Vector3(0, heightAt(0, 0), 0), vel: new THREE.Vector3(), yaw: 0, pitch: 0, onGround: true,
   hp: 100, maxHp: 100, stamina: 100, mana: 100, hunger: 100,
+  cls: 'warrior', battle: false, stanceK: 0, blocking: false, blockK: 0, drawing: false, drawT: 0, drawK: 0, reloadT: 0,
   meat: 1, essence: 0, level: 1, kills: 0, dmgMul: 1,
   staminaDelay: 0, chillT: 0, burnT: 0, dodgeT: 0, dodgeCd: 0, dodgeX: 0, dodgeZ: 0, stepAcc: 0, bob: 0,
 };
@@ -53,11 +54,22 @@ const game = {
 };
 window.__game = game;
 
-const SPELLS = [
-  { name: 'Firebolt', cost: 18, color: 0xff7a22 },
-  { name: 'Frost Nova', cost: 35, color: 0x66d8ff },
-  { name: 'Mend', cost: 40, color: 0x5cff8f },
-];
+/** Three ways to hunt. Each has its own weapon, three skills (cast with E / the Cast button) and stats. */
+const CLASSES = {
+  warrior: {
+    name: 'Warrior', hp: 130, manaRegen: 3.5, speed: 1, node: 0xffb040, range: 16,
+    skills: [{ name: 'Whirlwind', cost: 25, color: 0xffc060 }, { name: 'Shield Bash', cost: 20, color: 0xffe9a8 }, { name: 'Second Wind', cost: 40, color: 0x5cff8f }],
+  },
+  mage: {
+    name: 'Mage', hp: 85, manaRegen: 6.5, speed: 1, node: 0x7fb6ff, range: 48,
+    skills: [{ name: 'Firebolt', cost: 18, color: 0xff7a22 }, { name: 'Frost Nova', cost: 35, color: 0x66d8ff }, { name: 'Mend', cost: 40, color: 0x5cff8f }],
+  },
+  archer: {
+    name: 'Archer', hp: 100, manaRegen: 3.5, speed: 1.08, node: 0x9dff6a, range: 64,
+    skills: [{ name: 'Power Shot', cost: 22, color: 0xd8ff7a }, { name: 'Volley', cost: 30, color: 0x9dff6a }, { name: 'Field Dressing', cost: 40, color: 0x5cff8f }],
+  },
+};
+let SPELLS = CLASSES.mage.skills;
 let spell = 0, castCd = 0;
 
 // ---------------------------------------------------------------- particles
@@ -214,6 +226,106 @@ const SWINGS = [
   [mkPose([-0.3, -0.26, -0.62], [-0.15, -0.1, 1.45]), mkPose([0.62, -0.36, -0.62], [-0.15, -2.5, 1.45])],
   [mkPose([0.38, -0.1, -0.6], [0.95, 0, 0]), mkPose([0.26, -0.62, -0.82], [-1.9, 0, 0])],
 ];
+// ---------- class gear: shield (warrior), staff (mage), bow (archer) ----------
+const L = THREE.MathUtils.lerp;
+const CN = new THREE.ConeGeometry(1, 1, 6), BX = new THREE.BoxGeometry(1, 1, 1);
+const woodM = new THREE.MeshStandardMaterial({ color: 0x5a3d22, roughness: 0.9 });
+const paleWoodM = new THREE.MeshStandardMaterial({ color: 0xc9b48a, roughness: 0.8 });
+const steelM = new THREE.MeshStandardMaterial({ color: 0xaab8c8, metalness: 0.5, roughness: 0.35 });
+const paintM = new THREE.MeshStandardMaterial({ color: 0x2f4f7a, roughness: 0.6 });
+const featherM = new THREE.MeshStandardMaterial({ color: 0xd8d2c2, roughness: 1, side: THREE.DoubleSide });
+/** A hand closed around the +Y axis at its parent's origin; (fx, fy, fz) is the way the forearm runs. */
+function gripHand(side, fx, fy, fz, curl = 1, thumb = 0.85, scale = 1.75) {
+  const h = buildHand(side, curl, thumb), f = new THREE.Vector3(fx, fy, fz).normalize(), fr = f.clone();
+  if (side < 0) fr.x *= -1;
+  const up = new THREE.Vector3(0, 1, 0);
+  const X = up.clone().addScaledVector(fr, -up.dot(fr)).normalize().negate(), Y = new THREE.Vector3().crossVectors(fr, X);
+  if (side < 0) { X.x *= -1; X.negate(); Y.x *= -1; } // mirror the right-hand frame for a left hand
+  h.scale.setScalar(scale);
+  h.quaternion.setFromRotationMatrix(new THREE.Matrix4().makeBasis(X, Y, f));
+  h.position.copy(new THREE.Vector3(0, -0.024, -0.066).multiplyScalar(scale).applyQuaternion(h.quaternion)).negate();
+  return h;
+}
+// shield, strapped to the left forearm; we look at its wooden back
+const shieldArm = new THREE.Group(); vm.add(shieldArm);
+{
+  const hand = buildHand(-1, 1, 1.4); hand.scale.setScalar(1.6); hand.rotation.z = Math.PI / 2; hand.position.set(0, 0, 0.08); shieldArm.add(hand);
+  const sh = new THREE.Group(); sh.position.set(0, 0.04, -0.2); sh.scale.setScalar(0.78); shieldArm.add(sh);
+  vp(sh, HC, woodM, [0, 0, 0.012], AX, [0.36, 0.03, 0.36]);
+  vp(sh, HC, paintM, [0, 0, -0.012], AX, [0.345, 0.03, 0.345]);
+  const rim = new THREE.Mesh(new THREE.TorusGeometry(0.36, 0.024, 8, 30), studM); sh.add(rim);
+  vp(sh, HS, steelM, [0, 0, -0.035], null, [0.085, 0.085, 0.05]);
+  vp(sh, BX, bracerD, [0, -0.04, 0.035], null, [0.3, 0.045, 0.012]);
+  for (let i = 0; i < 6; i++) { const a = i / 6 * 6.283; vp(sh, HS, studM, [Math.cos(a) * 0.29, Math.sin(a) * 0.29, 0.03], null, 0.014); }
+}
+// staff in the right hand; the left hand keeps the spell orb
+const staff = new THREE.Group(); vm.add(staff);
+const gemM = new THREE.MeshStandardMaterial({ color: 0, emissive: 0xff7a22, emissiveIntensity: 3 });
+const gem = vp(staff, new THREE.OctahedronGeometry(1, 0), gemM, [0, 0.9, 0], null, [0.05, 0.08, 0.05]);
+vp(staff, HC, woodM, [0, 0.19, 0], null, [0.019, 1.3, 0.019]);
+vp(staff, HC, studM, [0, 0.76, 0], null, [0.026, 0.03, 0.026]);
+vp(staff, HC, studM, [0, -0.44, 0], null, [0.024, 0.04, 0.024]);
+for (let i = 0; i < 3; i++) { const a = i * 2.094; vp(staff, CN, woodM, [Math.cos(a) * 0.055, 0.86, Math.sin(a) * 0.055], [Math.sin(a) * 0.35, 0, -Math.cos(a) * 0.35], [0.013, 0.2, 0.013]); }
+staff.add(gripHand(1, 0.15, -0.6, 0.8));
+const STAFF_REST = mkPose([0.42, -0.42, -0.72], [-0.28, 0.15, -0.1]), STAFF_CAST = mkPose([0.33, -0.3, -0.86], [-1.0, 0.05, -0.05]);
+// bow in the left hand, arrow on the string, right hand drawing
+const bowArm = new THREE.Group(); vm.add(bowArm);
+const TIP = 0.58, TIPZ = 0.07, NOCK0 = 0.07;
+bowArm.add(new THREE.Mesh(new THREE.TubeGeometry(new THREE.QuadraticBezierCurve3(new THREE.Vector3(0, -TIP, TIPZ), new THREE.Vector3(0, 0, -0.22), new THREE.Vector3(0, TIP, TIPZ)), 24, 0.014, 6), woodM));
+vp(bowArm, HC, bracerD, [0, 0, -0.075], null, [0.02, 0.17, 0.02]);
+for (const sy of [-1, 1]) vp(bowArm, HS, studM, [0, sy * TIP, TIPZ], null, 0.018);
+const stringGeo = new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(0, -TIP, TIPZ), new THREE.Vector3(0, 0, NOCK0), new THREE.Vector3(0, TIP, TIPZ)]);
+bowArm.add(new THREE.Line(stringGeo, new THREE.LineBasicMaterial({ color: 0xe8e0c8 })));
+{ const h = gripHand(-1, -0.1, -0.35, 0.9); h.position.z -= 0.075; bowArm.add(h); }
+const nock = new THREE.Group(); nock.position.z = NOCK0; bowArm.add(nock); // slides back as you draw
+const nockArrow = new THREE.Group(); nockArrow.position.x = 0.018; nock.add(nockArrow);
+vp(nockArrow, HC, paleWoodM, [0, 0, -0.4], AX, [0.006, 0.8, 0.006]);
+vp(nockArrow, CN, steelM, [0, 0, -0.83], [-Math.PI / 2, 0, 0], [0.016, 0.07, 0.016]);
+for (let i = 0; i < 3; i++) { const a = i * 2.094; vp(nockArrow, BX, featherM, [Math.cos(a) * 0.013, Math.sin(a) * 0.013, -0.06], [0, 0, a], [0.026, 0.002, 0.09]); }
+nock.add(gripHand(1, 0.8, -0.25, 0.55, 0.8, 1.3, 1.25));
+const BOW_REST = { p: [-0.1, -0.36, -0.8], r: [0, 0.12, -0.6] }, BOW_DRAW = { p: [-0.2, -0.24, -0.98], r: [0, 0.1, -0.38] };
+let staffKick = 0, staffCd = 0, shieldKick = 0;
+
+function updateViewmodel(dt, hs) {
+  const p = player, t = game.time, c = p.cls;
+  p.stanceK += ((p.battle ? 1 : 0) - p.stanceK) * Math.min(1, dt * 9);
+  const k = p.stanceK, low = (1 - k) * 0.95, shown = k > 0.03;
+  const sway = Math.sin(p.bob) * 0.012 * Math.min(1, hs / 6);
+  vm.position.set(sway, Math.abs(Math.cos(p.bob)) * 0.012 * Math.min(1, hs / 6) - (p.onGround ? 0 : 0.02), 0);
+  sword.visible = shieldArm.visible = c === 'warrior' && shown;
+  staff.visible = lArm.visible = c === 'mage' && shown;
+  bowArm.visible = c === 'archer' && shown;
+  orbKick = Math.max(0, orbKick - dt * 4); staffKick = Math.max(0, staffKick - dt * 4.5); shieldKick = Math.max(0, shieldKick - dt * 4);
+  const col = SPELLS[spell].color;
+  if (c === 'warrior') {
+    poseSword(); sword.position.y -= low;
+    const b = p.blockK, sk = Math.sin(shieldKick * Math.PI);
+    shieldArm.position.set(L(-0.52, -0.2, b), L(-0.52, -0.3, b) - low, L(-0.62, -0.52, b) - sk * 0.35);
+    shieldArm.rotation.set(0.1 + sk * 0.2, L(0.6, 0.22, b), L(0.18, 0.05, b));
+  } else if (c === 'mage') {
+    const a = Math.sin(Math.max(staffKick, orbKick * 0.7) * Math.PI);
+    staff.position.lerpVectors(STAFF_REST.p, STAFF_CAST.p, a); staff.position.y -= low;
+    staff.quaternion.slerpQuaternions(STAFF_REST.q, STAFF_CAST.q, a);
+    gem.rotation.y = t * 2; gemM.emissive.set(col); gemM.emissiveIntensity = 2.2 + Math.sin(t * 5) * 0.4 + a * 4;
+    const kick = Math.sin(orbKick * Math.PI);
+    lArm.position.set(-0.44 + kick * 0.1, -0.4 + Math.sin(t * 1.6) * 0.006 + kick * 0.12 - low, -0.72 - kick * 0.28);
+    lArm.rotation.set(0.35 + kick * 0.5, 0.3, -0.15);
+    setCurl(lHand, 0.22 - kick * 0.2, 0.1);
+    orb.rotation.set(t, t * 1.3, 0); orbRing.rotation.y = t * 3; orb.position.y = -0.095 + Math.sin(t * 2.3) * 0.006;
+    orbMat.emissiveIntensity = 1.5 + Math.sin(t * 5) * 0.25 + orbKick * 5 - (p.mana < SPELLS[spell].cost ? 1.2 : 0);
+  } else {
+    p.drawK += ((p.drawing ? Math.min(1, p.drawT / 0.75) : 0) - p.drawK) * Math.min(1, dt * 18);
+    const d = p.drawK, e = d * d * (3 - 2 * d);
+    bowArm.position.set(L(BOW_REST.p[0], BOW_DRAW.p[0], e), L(BOW_REST.p[1], BOW_DRAW.p[1], e) - low, L(BOW_REST.p[2], BOW_DRAW.p[2], e));
+    bowArm.rotation.set(0, L(BOW_REST.r[1], BOW_DRAW.r[1], e), L(BOW_REST.r[2], BOW_DRAW.r[2], e) + (d >= 0.99 ? Math.sin(t * 40) * 0.004 : 0));
+    const nz = NOCK0 + e * 0.3;
+    nock.position.z = nz; stringGeo.attributes.position.setZ(1, nz); stringGeo.attributes.position.needsUpdate = true;
+    nockArrow.visible = p.reloadT <= 0;
+  }
+  orbLight.color.set(c === 'mage' ? col : 0xffe2b8);
+  orbLight.intensity = (game.isNight ? 2.2 : 0.8) * (c === 'mage' ? 1 : 0.6) * k + orbKick * 6;
+}
+
 const swing = { active: false, t: 0, type: 0, dur: 0.42, hitDone: false, queued: false, combo: 0, comboT: 0 };
 let orbKick = 0;
 const ease = (x) => x * x * (3 - 2 * x);
@@ -298,6 +410,17 @@ game.onKill = (m) => {
 game.burst = burst;
 game.damagePlayer = (dmg, from, name, kb = 6, effect) => {
   if (game.state !== 'playing' || player.dodgeT > 0 || game.travelling) return false;
+  if (player.blocking && from) { // shield up and facing the blow
+    const bx = from.x - player.pos.x, bz = from.z - player.pos.z, bl = Math.hypot(bx, bz) || 1;
+    if ((-Math.sin(player.yaw) * bx - Math.cos(player.yaw) * bz) / bl > 0.2) {
+      const held = player.stamina > 0;
+      player.stamina = Math.max(0, player.stamina - dmg * 0.7); player.staminaDelay = 1;
+      dmg *= held ? 0.2 : 0.6; kb *= 0.3; effect = undefined; shieldKick = 0.5;
+      camera.getWorldDirection(v1); v2.copy(camera.position).addScaledVector(v1, 0.9); v2.y -= 0.3;
+      burst(v2, 0xffe9a8, 14, 5, 0.3, 8); sfx.block();
+      if (!held) msg('Guard broken!');
+    }
+  }
   player.hp -= dmg;
   if (effect === 'chill') { player.chillT = 3; if (!game.chillTold) { game.chillTold = true; msg('Chilled — you move slower'); } }
   else if (effect === 'burn') { player.burnT = 3; if (!game.burnTold) { game.burnTold = true; msg('Burning!'); } }
@@ -324,6 +447,10 @@ function startSwing() {
   swing.combo++; swing.comboT = 1.1;
   player.stamina -= swing.type === 2 ? 11 : 7; player.staminaDelay = 0.6;
   sfx.swing();
+  const tg = game.target; // step in toward the target node
+  if (tg && !tg.dead && tg.dist > tg.def.radius + 1.6 && tg.dist < 7) {
+    player.vel.x += (tg.pos.x - player.pos.x) / tg.dist * 7; player.vel.z += (tg.pos.z - player.pos.z) / tg.dist * 7;
+  }
 }
 function attack() { if (swing.active) { if (swing.t / swing.dur > 0.45) swing.queued = true; } else startSwing(); }
 function swordHit() {
@@ -350,13 +477,16 @@ function swordHit() {
 
 function cast() {
   if (castCd > 0 || game.state !== 'playing') return;
+  if (!player.battle) { setStance(true); return; }
   const s = SPELLS[spell];
   if (player.mana < s.cost) { sfx.deny(); msg('Not enough mana'); castCd = 0.3; return; }
   player.mana -= s.cost; castCd = 0.55; orbKick = 1;
+  if (player.cls !== 'mage') { classSkill(); return; }
   if (spell === 0) {
     camera.getWorldDirection(v1);
     v2.copy(camera.position).addScaledVector(v1, 0.9);
     v3.set(-0.3, -0.18, 0).applyQuaternion(camera.quaternion); v2.add(v3);
+    aimDir(v2, v1);
     spawnBolt(v2, v1, 42, 36, 'player');
     flash(v2, 0xff8a33, 40, 0.2); sfx.fire();
   } else if (spell === 1) {
@@ -380,9 +510,178 @@ function cast() {
     game.healFx = 1; sfx.heal();
   }
 }
+// ---------- stances ----------
+/** Battle stance readies the weapon and shows the target node; normal stance puts everything away. */
+function setStance(battle) {
+  const p = player;
+  if (p.battle === battle || game.state !== 'playing') return;
+  p.battle = battle; p.drawing = false; p.drawT = 0;
+  if (battle) sfx.ready(); else { sfx.dodge(); swing.active = false; swing.queued = false; }
+}
+/** Where a shot should go: at the target node when the crosshair is close to it, otherwise straight ahead. */
+function aimDir(origin, out, lift = 0) {
+  camera.getWorldDirection(out);
+  const tg = game.target;
+  if (tg && !tg.dead) {
+    v3.copy(tg.center).sub(camera.position).normalize();
+    if (v3.dot(out) > 0.93) { out.copy(tg.center).sub(origin); out.y += lift * out.length(); out.normalize(); }
+  }
+  return out;
+}
+const arrowM = new THREE.MeshStandardMaterial({ color: 0xd9c79a, roughness: 0.8, emissive: 0x4a4030 });
+function shootArrow(power, o) {
+  const dir = new THREE.Vector3();
+  camera.getWorldDirection(v1);
+  v2.copy(camera.position).addScaledVector(v1, 0.9); v2.y -= 0.12;
+  const speed = o.speed || 45 + 35 * power;
+  aimDir(v2, dir, 2.5 / (speed * speed) * 0.5 * 2); // tiny lift to offset arrow drop
+  if (o.yaw) dir.applyAxisAngle(v3.set(0, 1, 0), o.yaw);
+  const mesh = new THREE.Group();
+  vp(mesh, HC, arrowM, null, AX, [0.012, 0.9, 0.012]);
+  vp(mesh, CN, steelM, [0, 0, 0.5], [Math.PI / 2, 0, 0], [0.035, 0.12, 0.035]);
+  mesh.position.copy(v2); scene.add(mesh);
+  bolts.push({ mesh, vel: dir.multiplyScalar(speed), life: 3, dmg: o.dmg || 12 + 30 * power, owner: 'player', kind: 'arrow', grav: 5, pierce: !!o.pierce });
+  player.reloadT = 0.35; sfx.bow();
+}
+function staffShot() {
+  if (staffCd > 0) return;
+  staffCd = 0.36; staffKick = 1;
+  gem.getWorldPosition(v2);
+  const dir = aimDir(v2, new THREE.Vector3());
+  const mesh = new THREE.Mesh(boltGeo, boltMat(0x9a7aff)); mesh.scale.setScalar(0.6);
+  mesh.position.copy(v2); scene.add(mesh);
+  bolts.push({ mesh, vel: dir.multiplyScalar(55), life: 2, dmg: 15, owner: 'player', kind: 'arcane', homing: true, target: game.target });
+  flash(v2, 0x9a7aff, 14, 0.15); sfx.zap();
+}
+/** Runs every frame: held attacks (combo chain, staff autofire, bow draw) and the shield block. */
+function heldAttack(dt) {
+  const p = player, held = input.atk || touch.atk;
+  p.reloadT -= dt; staffCd -= dt;
+  p.blocking = p.cls === 'warrior' && p.battle && (input.alt || touch.block) && !swing.active;
+  p.blockK += ((p.blocking ? 1 : 0) - p.blockK) * Math.min(1, dt * 14);
+  if (!p.battle) { p.drawing = false; return; }
+  if (p.cls === 'warrior') { if (held && !p.blocking && (!swing.active || swing.t / swing.dur > 0.45) && p.stamina >= 6) attack(); }
+  else if (p.cls === 'mage') { if (held && p.stanceK > 0.8) staffShot(); }
+  else if (p.drawing) { if (held) p.drawT = Math.min(1.2, p.drawT + dt); }
+  else if (held && p.reloadT <= 0 && p.stamina >= 6 && p.stanceK > 0.8) { p.drawing = true; p.drawT = 0; }
+}
+function atkPress() {
+  if (game.state !== 'playing') return;
+  if (!player.battle) { setStance(true); return; }
+  if (player.cls === 'warrior' && !player.blocking) attack();
+}
+function atkRelease() {
+  const p = player;
+  if (p.cls !== 'archer' || !p.drawing) return;
+  p.drawing = false;
+  const power = Math.max(0.2, Math.min(1, p.drawT / 0.75));
+  p.drawT = 0; p.stamina = Math.max(0, p.stamina - 6); p.staminaDelay = 0.5;
+  shootArrow(power, {});
+}
+function healSelf(n) {
+  player.hp = Math.min(player.maxHp, player.hp + n);
+  camera.getWorldDirection(v1); v2.copy(camera.position).addScaledVector(v1, 2.6);
+  burst(v2, 0x5cff8f, 16, 1.2, 1, -2, 2.2);
+  game.healFx = 1; sfx.heal();
+}
+/** Warrior and archer skills (the mage's spells live in cast()). */
+function classSkill() {
+  const P = player.pos;
+  if (spell === 2) { healSelf(player.cls === 'warrior' ? 35 : 30); return; }
+  if (player.cls === 'warrior') {
+    if (spell === 0) { // Whirlwind: everything around you
+      swing.active = true; swing.t = 0; swing.type = 0; swing.dur = 0.4; swing.hitDone = true; swing.queued = false;
+      for (const m of monsters.list) {
+        if (m.dead || m.dist > 4.6 + m.def.radius) continue;
+        hitMonster(m, 30, 2); burst(m.center, 0xffc27a, 12, 6, 0.4, 8);
+      }
+      showRing(P.x, P.y + 0.8, P.z, 4.6, 0xffc060); sfx.swing(); sfx.hit(); game.shake = Math.max(game.shake, 0.35);
+    } else { // Shield Bash: knocks back, slows and interrupts whatever is in front
+      shieldKick = 1; camera.getWorldDirection(v1);
+      for (const m of monsters.list) {
+        if (m.dead || m.dist > 4.2 + m.def.radius) continue;
+        const dx = m.pos.x - P.x, dz = m.pos.z - P.z;
+        if ((dx * v1.x + dz * v1.z) / (m.dist || 1) < 0.3) continue;
+        hitMonster(m, 18, 3.5); m.slowT = 3;
+        if (!m.dead && m.def.mass < 1 && m.state !== 'wander' && m.state !== 'flee') { m.state = 'recover'; m.timer = 1.2; }
+        burst(m.center, 0xffe9a8, 14, 6, 0.4, 6);
+      }
+      sfx.block(); sfx.hit(); game.shake = Math.max(game.shake, 0.3);
+    }
+  } else if (spell === 0) shootArrow(1, { dmg: 70, speed: 95, pierce: true }); // Power Shot: goes through everything
+  else for (let i = -2; i <= 2; i++) shootArrow(0.7, { dmg: 20, yaw: i * 0.09 }); // Volley
+}
+
+// ---------- target node ----------
+const nodeCv = document.createElement('canvas'); nodeCv.width = nodeCv.height = 128;
+{
+  const c = nodeCv.getContext('2d'); c.translate(64, 64); c.strokeStyle = '#fff'; c.fillStyle = '#fff'; c.lineCap = 'round';
+  c.lineWidth = 3; for (let i = 0; i < 4; i++) { c.beginPath(); c.arc(0, 0, 50, i * 1.5708 + 0.3, i * 1.5708 + 1.27); c.stroke(); }
+  c.lineWidth = 4; for (let i = 0; i < 4; i++) { c.rotate(1.5708); c.beginPath(); c.moveTo(0, -61); c.lineTo(0, -44); c.stroke(); }
+  c.beginPath(); c.moveTo(0, -6); c.lineTo(6, 0); c.lineTo(0, 6); c.lineTo(-6, 0); c.closePath(); c.fill();
+}
+const node = new THREE.Sprite(new THREE.SpriteMaterial({ map: new THREE.CanvasTexture(nodeCv), depthTest: false, depthWrite: false, fog: false, transparent: true }));
+node.renderOrder = 20; node.visible = false; scene.add(node);
+/** In battle stance, mark the creature nearest the crosshair that this class can reach. */
+function updateTarget(dt) {
+  let best = null, bs = -1;
+  if (player.battle && game.state === 'playing') {
+    camera.getWorldDirection(v1);
+    const range = CLASSES[player.cls].range;
+    for (const m of monsters.list) {
+      if (m.dead) continue;
+      v2.copy(m.center).sub(camera.position);
+      const d = v2.length(), dot = v2.dot(v1) / (d || 1);
+      if (d > range || (dot < 0.86 && d > 6) || dot < 0.3) continue;
+      const score = dot - d * 0.0015 + (m === game.target ? 0.02 : 0);
+      if (score > bs) { bs = score; best = m; }
+    }
+  }
+  game.target = best;
+  const panel = $('target');
+  if (!best) { node.visible = false; panel.style.display = 'none'; return; }
+  node.visible = true; node.position.copy(best.center);
+  node.scale.setScalar(Math.min(best.def.radius * 2.1 + 0.7, 0.4 + camera.position.distanceTo(best.center) * 0.3) * (1 + Math.sin(game.time * 6) * 0.05));
+  node.material.rotation += dt * 1.3; node.material.color.set(CLASSES[player.cls].node).multiplyScalar(1.25);
+  panel.style.display = 'block';
+  setText('tname', `${best.def.name} · ${best.def.temper === 'aggressive' ? 'hostile' : best.def.temper}`);
+  $('thp').style.width = Math.max(0, best.hp / best.maxHp * 100) + '%';
+}
+
+// ---------- saving (this device only) ----------
+const SAVE_KEY = 'ezhunter-save-v1';
+function readSave() {
+  try { const d = JSON.parse(localStorage.getItem(SAVE_KEY)); return d && d.v === 1 && CLASSES[d.cls] && MAPS[d.map] ? d : null; } catch { return null; }
+}
+function saveGame(silent) {
+  if (game.state !== 'playing' || game.travelling) return false;
+  const p = player;
+  const d = { v: 1, cls: p.cls, map: game.mapId, x: p.pos.x, z: p.pos.z, yaw: p.yaw, hp: p.hp, maxHp: p.maxHp, stamina: p.stamina, mana: p.mana, hunger: p.hunger,
+    meat: p.meat, essence: p.essence, level: p.level, kills: p.kills, dmgMul: p.dmgMul, time: game.time, spell, saved: Date.now() };
+  try { localStorage.setItem(SAVE_KEY, JSON.stringify(d)); if (!silent) msg('Progress saved'); return true; }
+  catch { if (!silent) msg('Could not save on this device'); return false; }
+}
+addEventListener('pagehide', () => saveGame(true));
+document.addEventListener('visibilitychange', () => { if (document.hidden) saveGame(true); });
+/** Pick the class (and restore a save, if given) before the hunt starts. */
+function applyStart(cls, sv) {
+  const p = player;
+  p.cls = cls; SPELLS = CLASSES[cls].skills;
+  document.body.dataset.cls = cls;
+  for (let k = 0; k < 3; k++) $('s' + k).innerHTML = `<b>${k + 1}</b>${SPELLS[k].name}<br><i>${SPELLS[k].cost} mana</i>`;
+  p.maxHp = p.hp = CLASSES[cls].hp;
+  if (sv) {
+    if (sv.map !== game.mapId) { world.load(sv.map); game.mapId = sv.map; }
+    for (const key of ['hp', 'maxHp', 'stamina', 'mana', 'hunger', 'meat', 'essence', 'level', 'kills', 'dmgMul', 'yaw']) if (typeof sv[key] === 'number') p[key] = sv[key];
+    p.pos.set(sv.x, heightAt(sv.x, sv.z), sv.z);
+    game.time = sv.time || 0; game.day = Math.floor(game.time / DAY_LEN + 0.07) + 1;
+  }
+  selectSpell(sv ? sv.spell || 0 : 0);
+}
+
 function selectSpell(i) {
   spell = (i + 3) % 3;
-  orbMat.emissive.set(SPELLS[spell].color); orbLight.color.set(SPELLS[spell].color);
+  orbMat.emissive.set(SPELLS[spell].color);
   for (let k = 0; k < 3; k++) $('s' + k).classList.toggle('on', k === spell);
 }
 function eat() {
@@ -413,6 +712,7 @@ function seedWorld() {
 
 // ---------------------------------------------------------------- input
 const keys = {};
+const input = { atk: false, alt: false };
 addEventListener('keydown', (e) => {
   if (e.repeat) return;
   keys[e.code] = true;
@@ -422,10 +722,13 @@ addEventListener('keydown', (e) => {
   else if (e.code === 'Digit3') selectSpell(2);
   else if (e.code === 'KeyF') eat();
   else if (e.code === 'KeyQ') dodge();
+  else if (e.code === 'KeyR') setStance(!player.battle);
+  else if (e.code === 'KeyE') cast();
+  else if (e.code === 'KeyP') saveGame();
   if (e.code === 'Space' || e.code === 'Tab') e.preventDefault();
 });
 addEventListener('keyup', (e) => { keys[e.code] = false; });
-addEventListener('blur', () => { for (const k in keys) keys[k] = false; });
+addEventListener('blur', () => { for (const k in keys) keys[k] = false; input.atk = input.alt = false; });
 addEventListener('mousemove', (e) => {
   if (document.pointerLockElement !== renderer.domElement || game.paused) return;
   player.yaw -= e.movementX * 0.0022;
@@ -433,7 +736,11 @@ addEventListener('mousemove', (e) => {
 });
 addEventListener('mousedown', (e) => {
   if (game.state !== 'playing' || game.paused || document.pointerLockElement !== renderer.domElement) return;
-  if (e.button === 0) attack(); else if (e.button === 2) cast();
+  if (e.button === 0) { input.atk = true; atkPress(); }
+  else if (e.button === 2) { input.alt = true; if (player.cls !== 'warrior') cast(); else if (!player.battle) setStance(true); }
+});
+addEventListener('mouseup', (e) => {
+  if (e.button === 0) { input.atk = false; atkRelease(); } else if (e.button === 2) input.alt = false;
 });
 addEventListener('contextmenu', (e) => e.preventDefault());
 addEventListener('wheel', (e) => { if (game.state === 'playing' && !game.paused) selectSpell(spell + (e.deltaY > 0 ? 1 : -1)); });
@@ -445,23 +752,34 @@ document.addEventListener('pointerlockchange', () => {
   if (locked) { hadLock = true; game.paused = false; $('pause').style.display = 'none'; }
   else if (hadLock && game.state === 'playing') { game.paused = true; $('pause').style.display = 'flex'; }
 });
-$('start').addEventListener('click', () => {
-  sfx.init();
+function begin(cls, sv) {
+  if (game.state !== 'menu') return;
+  sfx.init(); applyStart(cls, sv);
   $('start').style.display = 'none'; $('hud').style.display = 'block';
   game.state = 'playing'; monsters.seed();
   if (touch.on) {
     try { const f = document.documentElement.requestFullscreen?.(); if (f && f.catch) f.catch(() => {}); } catch { /* ignored */ }
     try { const o = screen.orientation?.lock?.('landscape'); if (o && o.catch) o.catch(() => {}); } catch { /* ignored */ }
   } else lock();
-  msg('Day 1 — hunt before the hunger takes you');
-});
+  msg(sv ? `Welcome back, ${CLASSES[cls].name}` : `${CLASSES[cls].name} — press R (or Stance) to ready your weapon`);
+}
+document.querySelectorAll('#classes .card').forEach((c) => c.addEventListener('click', () => begin(c.dataset.cls)));
+{
+  const sv = readSave();
+  if (sv) {
+    const b = $('continue');
+    b.style.display = 'block';
+    b.textContent = `Continue — ${CLASSES[sv.cls].name}, rank ${sv.level}, ${MAPS[sv.map].name}`;
+    b.addEventListener('click', () => begin(sv.cls, sv));
+  }
+}
 $('pause').addEventListener('click', lock);
 $('dead').addEventListener('click', () => location.reload());
 renderer.domElement.addEventListener('click', () => { if (game.state === 'playing' && !document.pointerLockElement && !touch.on) lock(); });
 
 // ---------------------------------------------------------------- touchscreen
 // Switched on by the first real touch, so mouse + keyboard players never see it.
-const touch = { on: false, joyId: null, ox: 0, oy: 0, jx: 0, jy: 0, sprint: false, lookId: null, lx: 0, ly: 0, atk: false, jump: false };
+const touch = { on: false, joyId: null, ox: 0, oy: 0, jx: 0, jy: 0, sprint: false, lookId: null, lx: 0, ly: 0, atk: false, jump: false, block: false };
 game.touch = touch;
 const stick = $('stick'), knob = $('knob');
 const STICK_R = 60;
@@ -511,11 +829,14 @@ function bindBtn(el, down, up) {
   const end = (e) => { e.stopPropagation(); el.classList.remove('down'); if (up) up(); };
   el.addEventListener('touchend', end); el.addEventListener('touchcancel', end);
 }
-bindBtn($('bAtk'), () => { touch.atk = true; attack(); }, () => { touch.atk = false; });
+bindBtn($('bAtk'), () => { touch.atk = true; atkPress(); }, () => { touch.atk = false; atkRelease(); });
 bindBtn($('bCast'), () => cast());
 bindBtn($('bJump'), () => { touch.jump = true; }, () => { touch.jump = false; });
 bindBtn($('bDodge'), () => dodge());
 bindBtn($('bEat'), () => eat());
+bindBtn($('bStance'), () => setStance(!player.battle));
+bindBtn($('bBlock'), () => { if (!player.battle) setStance(true); touch.block = true; }, () => { touch.block = false; });
+bindBtn($('bSave'), () => saveGame());
 [0, 1, 2].forEach((k) => bindBtn($('s' + k), () => selectSpell(k)));
 
 function dodge() {
@@ -613,6 +934,8 @@ function updateHud(dayT) {
   setText('day', `${MAPS[game.mapId].name} · Day ${game.day} · ${part}`);
   $('hurt').style.opacity = Math.max(game.hurtFx, player.hunger <= 0 ? 0.35 : 0, player.hp < 30 ? 0.3 : 0);
   $('heal').style.opacity = game.healFx;
+  setText('stance', player.battle ? `${CLASSES[player.cls].name} · battle stance` : 'Normal stance · R to ready');
+  $('stance').classList.toggle('on', player.battle);
   $('chill').style.opacity = player.chillT > 0 ? Math.min(1, player.chillT) * 0.8 : 0;
   drawMinimap();
 }
@@ -632,12 +955,12 @@ function updatePlayer(dt) {
   const [mx, mz] = moveDir();
   const moving = mx !== 0 || mz !== 0;
   const sprint = moving && p.stamina > 0 && p.dodgeT <= 0 && ((keys.ShiftLeft && keys.KeyW) || touch.sprint);
-  if (touch.atk && (!swing.active || swing.t / swing.dur > 0.45) && p.stamina >= 6) attack();
+  heldAttack(dt);
   if (touch.on) stick.classList.toggle('sprint', sprint);
   let tx, tz;
   p.dodgeCd -= dt;
   if (p.dodgeT > 0) { p.dodgeT -= dt; tx = p.dodgeX * 19; tz = p.dodgeZ * 19; }
-  else { const sp = (sprint ? 10.5 : 6) * (p.chillT > 0 ? 0.6 : 1); tx = mx * sp; tz = mz * sp; }
+  else { const sp = (sprint ? 10.5 : 6) * (p.chillT > 0 ? 0.6 : 1) * CLASSES[p.cls].speed * (p.battle ? 1 : 1.1) * (p.blocking ? 0.45 : 1) * (p.drawing ? 0.6 : 1); tx = mx * sp; tz = mz * sp; }
   const k = Math.min(1, dt * (p.onGround ? 12 : 3));
   p.vel.x += (tx - p.vel.x) * k; p.vel.z += (tz - p.vel.z) * k;
   p.pos.x += p.vel.x * dt; p.pos.z += p.vel.z * dt;
@@ -659,10 +982,10 @@ function updatePlayer(dt) {
   // vitals
   if (sprint) { p.stamina -= 15 * dt; p.staminaDelay = 0.7; }
   p.staminaDelay -= dt;
-  if (p.staminaDelay <= 0) p.stamina += 24 * dt;
+  if (p.staminaDelay <= 0) p.stamina += 24 * dt * (p.battle ? 1 : 1.4);
   p.stamina = Math.max(0, Math.min(100, p.stamina));
-  p.mana = Math.min(100, p.mana + 3.5 * dt);
-  p.hunger = Math.max(0, p.hunger - (0.42 + (sprint ? 0.3 : 0)) * dt);
+  p.mana = Math.min(100, p.mana + CLASSES[p.cls].manaRegen * dt);
+  p.hunger = Math.max(0, p.hunger - (0.42 + (sprint ? 0.3 : 0)) * (p.battle ? 1 : 0.85) * dt);
   if (p.hunger <= 0) { p.hp -= 2.6 * dt; if (p.hp <= 0) die('Starved in the wilds'); }
   else if (p.hunger > 50 && p.hp < p.maxHp) p.hp = Math.min(p.maxHp, p.hp + 1.3 * dt);
   p.chillT -= dt;
@@ -691,33 +1014,34 @@ function updatePlayer(dt) {
   camera.rotation.set(p.pitch + (Math.random() - 0.5) * sh * 0.06, p.yaw, (Math.random() - 0.5) * sh * 0.06 - (p.dodgeT > 0 ? 0.06 : 0));
   const fov = sprint ? 84 : 75;
   if (Math.abs(camera.fov - fov) > 0.1) { camera.fov += (fov - camera.fov) * Math.min(1, dt * 7); camera.updateProjectionMatrix(); }
-  // viewmodel
-  poseSword();
-  const sway = Math.sin(p.bob) * 0.012 * Math.min(1, hs / 6);
-  vm.position.set(sway, Math.abs(Math.cos(p.bob)) * 0.012 * Math.min(1, hs / 6) - (p.onGround ? 0 : 0.02), 0);
-  orbKick = Math.max(0, orbKick - dt * 4);
-  const t = game.time;
-  const kick = Math.sin(orbKick * Math.PI);
-  lArm.position.set(-0.44 + kick * 0.1, -0.4 + Math.sin(t * 1.6) * 0.006 + kick * 0.12, -0.72 - kick * 0.28);
-  lArm.rotation.set(0.35 + kick * 0.5, 0.3, -0.15);
-  setCurl(lHand, 0.22 - kick * 0.2, 0.1);
-  orb.rotation.set(t, t * 1.3, 0); orbRing.rotation.y = t * 3; orb.position.y = -0.095 + Math.sin(t * 2.3) * 0.006;
-  orbMat.emissiveIntensity = 1.5 + Math.sin(t * 5) * 0.25 + orbKick * 5 - (player.mana < SPELLS[spell].cost ? 1.2 : 0);
-  orbLight.intensity = (game.isNight ? 2.2 : 0.8) + orbKick * 6;
+  updateViewmodel(dt, hs);
 }
 
 function updateBolts(dt) {
   for (let i = bolts.length - 1; i >= 0; i--) {
     const b = bolts[i], bp = b.mesh.position;
+    if (b.grav) b.vel.y -= b.grav * dt;
+    if (b.homing && b.target && !b.target.dead) { // gentle curve toward the target node
+      const sp = b.vel.length();
+      v1.copy(b.target.center).sub(bp).normalize();
+      b.vel.normalize().lerp(v1, Math.min(1, dt * 6)).normalize().multiplyScalar(sp);
+    }
     bp.addScaledVector(b.vel, dt); b.life -= dt;
-    burst(bp, b.owner === 'player' ? 0xff7a22 : b.color, 2, 0.8, 0.35, -1, 0.15);
+    if (b.kind === 'arrow') { v1.copy(bp).add(b.vel); b.mesh.lookAt(v1); }
+    else burst(bp, b.owner !== 'player' ? b.color : b.kind === 'arcane' ? 0x9a7aff : 0xff7a22, b.kind === 'arcane' ? 1 : 2, 0.8, 0.35, -1, 0.15);
     let done = b.life <= 0, direct = null;
     if (bp.y < heightAt(bp.x, bp.z) + 0.1) done = true;
     if (b.owner === 'player') {
       for (const m of monsters.list) {
-        if (!m.dead && m.center.distanceTo(bp) < m.def.radius + 0.55) { direct = m; done = true; break; }
+        if (!m.dead && !(b.hit && b.hit.has(m)) && m.center.distanceTo(bp) < m.def.radius + 0.55) { direct = m; break; }
       }
-      if (done) explode(bp, b.dmg, direct);
+      if (!b.kind) { if (direct) done = true; if (done) explode(bp, b.dmg, direct); }
+      else if (direct) {
+        hitMonster(direct, b.dmg, b.kind === 'arrow' ? 1.2 : 0.6);
+        burst(bp, b.kind === 'arrow' ? 0xffd9a0 : 0x9a7aff, 12, 5, 0.35, 6); sfx.hit();
+        player.mana = Math.min(100, player.mana + 3);
+        if (b.pierce) (b.hit || (b.hit = new Set())).add(direct); else done = true;
+      } else if (done) burst(bp, 0x8a7a66, 6, 3, 0.3, 8);
     } else {
       v1.set(player.pos.x, player.pos.y + 1.1, player.pos.z);
       if (v1.distanceTo(bp) < 0.95) { game.damagePlayer(b.dmg, bp, b.name, 4, b.effect); done = true; }
@@ -756,6 +1080,7 @@ function arrive(id) {
   player.pos.set(0, heightAt(0, 0), 0); player.vel.set(0, 0, 0);
   monsters.seed();
   msg(`${MAPS[id].name} — ${MAPS[id].sub}`);
+  setTimeout(() => saveGame(true), 700);
 }
 let ambAcc = 0;
 /** Weather: snowfall on the tundra, rising embers in the wastes, fireflies in the vale at night. */
@@ -781,6 +1106,9 @@ function update(dt) {
   if (!game.isNight) nightAnnounced = false;
 
   updatePlayer(dt);
+  updateTarget(dt);
+  game.saveT = (game.saveT || 0) + dt;
+  if (game.saveT > 20) { game.saveT = 0; saveGame(true); }
   // waygates: walk into one to travel to another map
   for (const g of game.travelling ? [] : world.gates) {
     const gd = Math.hypot(player.pos.x - g.x, player.pos.z - g.z);
@@ -839,6 +1167,8 @@ function frame() {
   }
   composer.render();
 }
-game.debug = { attack, cast, selectSpell, eat, dodge, travel };
+game.debug = { attack, cast, selectSpell, eat, dodge, travel, begin, setStance, atkPress, atkRelease, saveGame, readSave, input,
+  /** Advance the simulation by n fixed frames (for automated checks). */
+  step: (n = 60) => { for (let i = 0; i < n; i++) { lastDayT = update(1 / 60); updateFx(1 / 60); } updateHud(lastDayT); } };
 selectSpell(0);
 frame();
