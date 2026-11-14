@@ -65,6 +65,7 @@ export class Sfx {
   step() { this.noise(0.07, 180 + Math.random() * 80, 0.16, 'lowpass'); }
   level() { [392, 523, 659, 784, 1046].forEach((f, i) => this.tone(f, 0.6, 'triangle', 0.14, 0, i * 0.08)); }
   block() { this.noise(0.12, 2400, 0.5, 'bandpass', 900, 2); this.tone(320, 0.14, 'square', 0.14, 140); }
+  draw() { this.noise(0.3, 400, 0.12, 'bandpass', 900, 4); }
   bow() { this.noise(0.16, 900, 0.3, 'bandpass', 3200, 2); this.tone(190, 0.12, 'triangle', 0.16, 80); }
   zap() { this.tone(900, 0.13, 'sawtooth', 0.07, 320); this.noise(0.08, 3000, 0.12, 'highpass'); }
   ready() { this.noise(0.18, 1800, 0.3, 'bandpass', 5000, 3); this.tone(660, 0.1, 'triangle', 0.06, 990); }

@@ -65,6 +65,8 @@
   #pause, #dead { display: none; }
   #target { left: 50%; top: 58px; transform: translateX(-50%); width: 260px; padding: 6px 10px; display: none; text-align: center; font-size: 12px; letter-spacing: .1em; }
   #target .track { height: 7px; margin-top: 4px; }
+  #target.locked { border-color: var(--gold); color: var(--gold); }
+  body.touch #target { pointer-events: auto; }
   #thp { background: linear-gradient(90deg, #7c1410, #e2422c); transition: width .1s linear; }
   #stance { position: absolute; left: 50%; bottom: 112px; transform: translateX(-50%); font-size: 11px; letter-spacing: .2em; text-transform: uppercase;
     opacity: .6; text-shadow: 0 1px 3px #000; white-space: nowrap; }
@@ -189,7 +191,7 @@
   <h1>ASHEN WILDS</h1>
   <h2>Hunt or starve</h2>
   <div class="lore">Your hunger never stops. Bring down beasts with blade and spell, eat what you kill, and survive as many days as you can.
-    You start at camp in the Verdant Vale. Glowing waygates lead to the Frostfang Tundra and the Cinder Wastes — each with its own beasts. In battle stance a target node marks the creature you are facing; in normal stance your gear is put away and you travel lighter.</div>
+    You start at camp in the Verdant Vale. Glowing waygates lead to the Frostfang Tundra and the Cinder Wastes — each with its own beasts. In battle stance a target node marks the creature you are facing, and the camera locks onto whatever you attack; in normal stance your gear is put away and you travel lighter.</div>
   <div id="continue" class="go"></div>
   <div id="classes">
     <div class="card" data-cls="warrior"><b>Warrior</b><i>Sword &amp; shield</i><span>Tough. Three-hit sword combo; raise the shield to block.</span></div>
@@ -199,6 +201,7 @@
   <div class="keys">
     <b>W A S D / Mouse</b><span>Move / look</span>
     <b>R</b><span>Battle stance &harr; normal stance (weapons away)</span>
+    <b>Tab &middot; T</b><span>Switch locked target &middot; release / toggle lock-on camera</span>
     <b>Left click</b><span>Attack &mdash; hold: combo, staff fire, or draw the bow</span>
     <b>Right click</b><span>Warrior: block &middot; Mage / Archer: use skill</span>
     <b>E &middot; 1 2 3 / Wheel</b><span>Use skill &middot; select skill</span>

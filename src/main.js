@@ -44,7 +44,7 @@ const sfx = new Sfx();
 const player = {
   pos: new THREE.Vector3(0, heightAt(0, 0), 0), vel: new THREE.Vector3(), yaw: 0, pitch: 0, onGround: true,
   hp: 100, maxHp: 100, stamina: 100, mana: 100, hunger: 100,
-  cls: 'warrior', battle: false, stanceK: 0, blocking: false, blockK: 0, drawing: false, drawT: 0, drawK: 0, reloadT: 0,
+  cls: 'warrior', battle: false, stanceK: 0, blocking: false, blockK: 0, drawing: false, drawT: 0, drawK: 0, reloadT: 0, looseK: 0, autoLoose: false,
   meat: 1, essence: 0, level: 1, kills: 0, dmgMul: 1,
   staminaDelay: 0, chillT: 0, burnT: 0, dodgeT: 0, dodgeCd: 0, dodgeX: 0, dodgeZ: 0, stepAcc: 0, bob: 0,
 };
@@ -147,11 +147,12 @@ const sword = new THREE.Group(); vm.add(sword);
 }
 // Hands: jointed fingers (three phalanges each) so the right can close into a fist on the grip
 // and the left can hold the spell orb in an open, cupped palm.
-const HC = new THREE.CylinderGeometry(1, 1, 1, 8), HS = new THREE.SphereGeometry(1, 10, 8);
+const HC = new THREE.CylinderGeometry(1, 1, 1, 8), HS = new THREE.SphereGeometry(1, 10, 8), BX = new THREE.BoxGeometry(1, 1, 1);
 const skinM = new THREE.MeshStandardMaterial({ color: 0xc8997a, roughness: 0.75 });
 const clothM = new THREE.MeshStandardMaterial({ color: 0x4a4038, roughness: 1 });
 const bracerM = new THREE.MeshStandardMaterial({ color: 0x3a2618, roughness: 0.85 });
 const bracerD = new THREE.MeshStandardMaterial({ color: 0x21140c, roughness: 0.85 });
+const gloveM = new THREE.MeshStandardMaterial({ color: 0x7a5636, roughness: 0.8 });
 const studM = new THREE.MeshStandardMaterial({ color: 0xc9a14a, metalness: 0.5, roughness: 0.4 });
 function vp(parent, geo, mat, pos, rot, scale) {
   const m = new THREE.Mesh(geo, mat);
@@ -165,40 +166,43 @@ const AX = [Math.PI / 2, 0, 0]; // lay a cylinder along Z
 /** side: 1 = right hand, -1 = left. Forearm runs back along +Z, fingers reach along -Z and curl toward -Y. */
 function buildHand(side, curl, thumbCurl) {
   const h = new THREE.Group(), F = [];
-  vp(h, HC, clothM, [0, -0.012, 0.46], AX, [0.058, 0.36, 0.062]);
-  vp(h, HC, bracerM, [0, -0.005, 0.2], AX, [0.047, 0.24, 0.05]);
-  vp(h, HC, bracerD, [0, -0.005, 0.31], AX, [0.052, 0.03, 0.055]);
-  vp(h, HC, bracerD, [0, -0.005, 0.1], AX, [0.045, 0.025, 0.046]);
-  for (let i = 0; i < 3; i++) vp(h, HS, studM, [0, 0.045, 0.14 + i * 0.06], null, 0.008);
-  vp(h, HS, skinM, [0, 0, 0.045], null, [0.036, 0.026, 0.04]);            // wrist
-  vp(h, HS, bracerM, [0, 0, -0.035], null, [0.05, 0.024, 0.058]);         // glove back
-  vp(h, HS, skinM, [0, 0.004, -0.04], null, [0.046, 0.022, 0.054]);       // palm
+  vp(h, HC, clothM, [0, -0.008, 0.47], AX, [0.05, 0.36, 0.044]);                 // sleeve
+  vp(h, HC, bracerM, [0, -0.004, 0.2], AX, [0.041, 0.22, 0.034]);                // bracer
+  vp(h, HC, bracerD, [0, -0.004, 0.3], AX, [0.045, 0.028, 0.038]);
+  vp(h, HC, bracerD, [0, -0.004, 0.1], AX, [0.04, 0.022, 0.032]);
+  for (let i = 0; i < 3; i++) vp(h, HS, studM, [0, 0.031, 0.15 + i * 0.05], null, 0.007);
+  vp(h, HC, skinM, [0, -0.002, 0.045], AX, [0.033, 0.1, 0.022]);                 // wrist, flattened like a real one
+  vp(h, BX, skinM, [0, -0.004, -0.04], null, [0.088, 0.03, 0.092]);              // palm block, up to the knuckles
+  vp(h, BX, gloveM, [0, 0.012, -0.034], null, [0.08, 0.008, 0.07]);            // glove leather across the back of the hand
   for (let i = 0; i < 4; i++) {
     const len = [0.036, 0.041, 0.039, 0.031][i];
     const k1 = new THREE.Group(); k1.position.set((i - 1.5) * 0.0235 * side, 0, -0.083 + Math.abs(i - 1.4) * 0.006);
     k1.rotation.y = (i - 1.5) * -0.07 * side; h.add(k1);
-    vp(k1, HS, skinM, null, null, 0.0125); vp(k1, HC, skinM, [0, 0, -len / 2], AX, [0.0105, len, 0.0105]);
+    vp(k1, HS, skinM, [0, 0.002, 0], null, 0.0138); vp(k1, HC, skinM, [0, 0, -len / 2], AX, [0.0118, len, 0.0118]);
     const k2 = new THREE.Group(); k2.position.z = -len; k1.add(k2);
-    vp(k2, HS, skinM, null, null, 0.011); vp(k2, HC, skinM, [0, 0, -len * 0.36], AX, [0.0095, len * 0.72, 0.0095]);
+    vp(k2, HS, skinM, null, null, 0.0122); vp(k2, HC, skinM, [0, 0, -len * 0.36], AX, [0.0108, len * 0.72, 0.0108]);
     const k3 = new THREE.Group(); k3.position.z = -len * 0.72; k2.add(k3);
-    vp(k3, HS, skinM, null, null, 0.0098); vp(k3, HC, skinM, [0, 0, -len * 0.3], AX, [0.0085, len * 0.6, 0.0085]);
-    vp(k3, HS, skinM, [0, 0, -len * 0.6], null, 0.0088);
+    vp(k3, HS, skinM, null, null, 0.011); vp(k3, HC, skinM, [0, 0, -len * 0.3], AX, [0.0098, len * 0.6, 0.0098]);
+    vp(k3, HS, skinM, [0, 0, -len * 0.6], null, [0.0098, 0.009, 0.011]);
     F.push([k1, k2, k3]);
   }
-  const t1 = new THREE.Group(); t1.position.set(-side * 0.042, -0.004, -0.012); t1.rotation.set(0, side * 0.9, 0); h.add(t1);
-  vp(t1, HS, skinM, null, null, [0.017, 0.015, 0.02]); vp(t1, HC, skinM, [0, 0, -0.02], AX, [0.0125, 0.04, 0.0125]);
-  const t2 = new THREE.Group(); t2.position.z = -0.04; t1.add(t2);
-  vp(t2, HS, skinM, null, null, 0.012); vp(t2, HC, skinM, [0, 0, -0.015], AX, [0.0105, 0.03, 0.0105]); vp(t2, HS, skinM, [0, 0, -0.03], null, 0.0105);
+  vp(h, HS, skinM, [-side * 0.034, -0.012, -0.012], null, [0.02, 0.018, 0.034]); // heel of the thumb
+  const t1 = new THREE.Group(); t1.position.set(-side * 0.043, -0.008, -0.022); t1.rotation.order = 'YXZ'; h.add(t1);
+  vp(t1, HS, skinM, null, null, [0.0165, 0.015, 0.018]); vp(t1, HC, skinM, [0, 0, -0.018], AX, [0.0135, 0.036, 0.0135]);
+  const t2 = new THREE.Group(); t2.position.z = -0.036; t1.add(t2);
+  vp(t2, HS, skinM, null, null, 0.0128); vp(t2, HC, skinM, [0, 0, -0.014], AX, [0.0115, 0.028, 0.0115]); vp(t2, HS, skinM, [0, 0, -0.028], null, [0.0115, 0.0105, 0.013]);
   h.userData = { F, t1, t2, side };
   setCurl(h, curl, thumbCurl);
   return h;
 }
 function setCurl(h, c, tc = 0.3) {
   for (const [k1, k2, k3] of h.userData.F) { k1.rotation.x = -c * 1.35; k2.rotation.x = -c * 1.55; k3.rotation.x = -c * 1.1; }
-  h.userData.t1.rotation.x = -tc * 0.9; h.userData.t2.rotation.y = h.userData.side * tc * 0.9;
+  // open hand: thumb rests out to the side. Closing: it swings in across the front of the fingers and flexes down.
+  const { t1, t2, side } = h.userData;
+  t1.rotation.set(-tc * 0.8, side * (0.85 - tc * 1.2), 0); t2.rotation.set(-tc * 0.75, 0, 0);
 }
 // right hand: fist wrapped around the sword grip, so it follows every swing
-const rHand = buildHand(1, 1, 0.85);
+const rHand = buildHand(1, 1, 1);
 {
   const HSCALE = 1.75, f = new THREE.Vector3(0.15, -0.6, 0.8).normalize(), up = new THREE.Vector3(0, 1, 0);
   const X = up.clone().addScaledVector(f, -up.dot(f)).normalize().negate(), Y = new THREE.Vector3().crossVectors(f, X);
@@ -228,14 +232,14 @@ const SWINGS = [
 ];
 // ---------- class gear: shield (warrior), staff (mage), bow (archer) ----------
 const L = THREE.MathUtils.lerp;
-const CN = new THREE.ConeGeometry(1, 1, 6), BX = new THREE.BoxGeometry(1, 1, 1);
+const CN = new THREE.ConeGeometry(1, 1, 6);
 const woodM = new THREE.MeshStandardMaterial({ color: 0x5a3d22, roughness: 0.9 });
 const paleWoodM = new THREE.MeshStandardMaterial({ color: 0xc9b48a, roughness: 0.8 });
 const steelM = new THREE.MeshStandardMaterial({ color: 0xaab8c8, metalness: 0.5, roughness: 0.35 });
 const paintM = new THREE.MeshStandardMaterial({ color: 0x2f4f7a, roughness: 0.6 });
 const featherM = new THREE.MeshStandardMaterial({ color: 0xd8d2c2, roughness: 1, side: THREE.DoubleSide });
 /** A hand closed around the +Y axis at its parent's origin; (fx, fy, fz) is the way the forearm runs. */
-function gripHand(side, fx, fy, fz, curl = 1, thumb = 0.85, scale = 1.75) {
+function gripHand(side, fx, fy, fz, curl = 1, thumb = 1, scale = 1.75) {
   const h = buildHand(side, curl, thumb), f = new THREE.Vector3(fx, fy, fz).normalize(), fr = f.clone();
   if (side < 0) fr.x *= -1;
   const up = new THREE.Vector3(0, 1, 0);
@@ -249,7 +253,7 @@ function gripHand(side, fx, fy, fz, curl = 1, thumb = 0.85, scale = 1.75) {
 // shield, strapped to the left forearm; we look at its wooden back
 const shieldArm = new THREE.Group(); vm.add(shieldArm);
 {
-  const hand = buildHand(-1, 1, 1.4); hand.scale.setScalar(1.6); hand.rotation.z = Math.PI / 2; hand.position.set(0, 0, 0.08); shieldArm.add(hand);
+  const hand = buildHand(-1, 1, 1); hand.scale.setScalar(1.6); hand.rotation.z = Math.PI / 2; hand.position.set(0, -0.03, 0.08); shieldArm.add(hand);
   const sh = new THREE.Group(); sh.position.set(0, 0.04, -0.2); sh.scale.setScalar(0.78); shieldArm.add(sh);
   vp(sh, HC, woodM, [0, 0, 0.012], AX, [0.36, 0.03, 0.36]);
   vp(sh, HC, paintM, [0, 0, -0.012], AX, [0.345, 0.03, 0.345]);
@@ -282,7 +286,7 @@ const nockArrow = new THREE.Group(); nockArrow.position.x = 0.018; nock.add(nock
 vp(nockArrow, HC, paleWoodM, [0, 0, -0.4], AX, [0.006, 0.8, 0.006]);
 vp(nockArrow, CN, steelM, [0, 0, -0.83], [-Math.PI / 2, 0, 0], [0.016, 0.07, 0.016]);
 for (let i = 0; i < 3; i++) { const a = i * 2.094; vp(nockArrow, BX, featherM, [Math.cos(a) * 0.013, Math.sin(a) * 0.013, -0.06], [0, 0, a], [0.026, 0.002, 0.09]); }
-nock.add(gripHand(1, 0.8, -0.25, 0.55, 0.8, 1.3, 1.25));
+nock.add(gripHand(1, 0.8, -0.25, 0.55, 0.85, 1, 1.25));
 const BOW_REST = { p: [-0.1, -0.36, -0.8], r: [0, 0.12, -0.6] }, BOW_DRAW = { p: [-0.2, -0.24, -0.98], r: [0, 0.1, -0.38] };
 let staffKick = 0, staffCd = 0, shieldKick = 0;
 
@@ -293,15 +297,16 @@ function updateViewmodel(dt, hs) {
   const sway = Math.sin(p.bob) * 0.012 * Math.min(1, hs / 6);
   vm.position.set(sway, Math.abs(Math.cos(p.bob)) * 0.012 * Math.min(1, hs / 6) - (p.onGround ? 0 : 0.02), 0);
   sword.visible = shieldArm.visible = c === 'warrior' && shown;
-  staff.visible = lArm.visible = c === 'mage' && shown;
+  staff.visible = c === 'mage' && shown; lArm.visible = false; // the mage fights with the staff alone
   bowArm.visible = c === 'archer' && shown;
   orbKick = Math.max(0, orbKick - dt * 4); staffKick = Math.max(0, staffKick - dt * 4.5); shieldKick = Math.max(0, shieldKick - dt * 4);
   const col = SPELLS[spell].color;
   if (c === 'warrior') {
-    poseSword(); sword.position.y -= low;
     const b = p.blockK, sk = Math.sin(shieldKick * Math.PI);
-    shieldArm.position.set(L(-0.52, -0.2, b), L(-0.52, -0.3, b) - low, L(-0.62, -0.52, b) - sk * 0.35);
-    shieldArm.rotation.set(0.1 + sk * 0.2, L(0.6, 0.22, b), L(0.18, 0.05, b));
+    poseSword();
+    sword.position.x += b * 0.22; sword.position.y -= low + b * 1.15; sword.position.z += b * 0.3; // sword hand held low and back
+    shieldArm.position.set(L(-0.52, -0.01, b), L(-0.52, -0.2, b) - low, L(-0.62, -0.42, b) - sk * 0.35);
+    shieldArm.rotation.set(L(0.1, -0.06, b) + sk * 0.2, L(0.6, 0, b), L(0.18, 0, b));
   } else if (c === 'mage') {
     const a = Math.sin(Math.max(staffKick, orbKick * 0.7) * Math.PI);
     staff.position.lerpVectors(STAFF_REST.p, STAFF_CAST.p, a); staff.position.y -= low;
@@ -314,13 +319,21 @@ function updateViewmodel(dt, hs) {
     orb.rotation.set(t, t * 1.3, 0); orbRing.rotation.y = t * 3; orb.position.y = -0.095 + Math.sin(t * 2.3) * 0.006;
     orbMat.emissiveIntensity = 1.5 + Math.sin(t * 5) * 0.25 + orbKick * 5 - (p.mana < SPELLS[spell].cost ? 1.2 : 0);
   } else {
-    p.drawK += ((p.drawing ? Math.min(1, p.drawT / 0.75) : 0) - p.drawK) * Math.min(1, dt * 18);
-    const d = p.drawK, e = d * d * (3 - 2 * d);
-    bowArm.position.set(L(BOW_REST.p[0], BOW_DRAW.p[0], e), L(BOW_REST.p[1], BOW_DRAW.p[1], e) - low, L(BOW_REST.p[2], BOW_DRAW.p[2], e));
-    bowArm.rotation.set(0, L(BOW_REST.r[1], BOW_DRAW.r[1], e), L(BOW_REST.r[2], BOW_DRAW.r[2], e) + (d >= 0.99 ? Math.sin(t * 40) * 0.004 : 0));
-    const nz = NOCK0 + e * 0.3;
-    nock.position.z = nz; stringGeo.attributes.position.setZ(1, nz); stringGeo.attributes.position.needsUpdate = true;
-    nockArrow.visible = p.reloadT <= 0;
+    // draw: the string hand pulls back while the bow comes up; loose: the string snaps and the bow kicks;
+    // then the hand dips for a fresh arrow and sets it on the string
+    const want = p.drawing ? Math.min(1, p.drawT / 0.75) : 0;
+    p.drawK += (want - p.drawK) * Math.min(1, dt * (p.drawing ? 14 : 40));
+    p.looseK = Math.max(0, p.looseK - dt * 3.2);
+    const d = p.drawK, e = d * d * (3 - 2 * d), lk = p.looseK, snap = lk * lk;
+    const re = p.reloadT > 0 ? 1 - p.reloadT / RELOAD : 1, dip = Math.sin(re * Math.PI); // 0→1 through the re-nock
+    bowArm.position.set(L(BOW_REST.p[0], BOW_DRAW.p[0], e), L(BOW_REST.p[1], BOW_DRAW.p[1], e) - low + snap * 0.03, L(BOW_REST.p[2], BOW_DRAW.p[2], e) - snap * 0.09);
+    bowArm.rotation.set(-snap * 0.12, L(BOW_REST.r[1], BOW_DRAW.r[1], e), L(BOW_REST.r[2], BOW_DRAW.r[2], e) + (d >= 0.99 ? Math.sin(t * 40) * 0.004 : 0) - snap * 0.1);
+    const pull = NOCK0 + e * 0.38;
+    const sz = pull + (lk > 0 ? Math.sin(lk * 28) * 0.035 * lk : 0); // string twangs after the loose
+    stringGeo.attributes.position.setZ(1, sz); stringGeo.attributes.position.needsUpdate = true;
+    nock.position.set(dip * 0.2, -dip * 0.24, pull + dip * 0.22);
+    nock.rotation.z = -dip * 0.5;
+    nockArrow.visible = re > 0.45;
   }
   orbLight.color.set(c === 'mage' ? col : 0xffe2b8);
   orbLight.intensity = (game.isNight ? 2.2 : 0.8) * (c === 'mage' ? 1 : 0.6) * k + orbKick * 6;
@@ -395,6 +408,7 @@ function dropLoot(pos, kind, value) {
 // ---------------------------------------------------------------- combat
 function hitMonster(m, dmg, kb) {
   const dx = m.pos.x - player.pos.x, dz = m.pos.z - player.pos.z, d = Math.hypot(dx, dz) || 1;
+  if (player.battle && !game.lockOff && (!game.lock || game.lock.dead)) game.lock = m;
   const amount = dmg * player.dmgMul * (0.9 + Math.random() * 0.2);
   floatText(Math.round(amount), m.center, m.def.height, amount >= 30 * player.dmgMul);
   m.takeDamage(amount, game, dx / d, dz / d, kb);
@@ -486,7 +500,7 @@ function cast() {
     camera.getWorldDirection(v1);
     v2.copy(camera.position).addScaledVector(v1, 0.9);
     v3.set(-0.3, -0.18, 0).applyQuaternion(camera.quaternion); v2.add(v3);
-    aimDir(v2, v1);
+    gem.getWorldPosition(v2); aimDir(v2, v1); // spells leave from the staff's crystal
     spawnBolt(v2, v1, 42, 36, 'player');
     flash(v2, 0xff8a33, 40, 0.2); sfx.fire();
   } else if (spell === 1) {
@@ -518,30 +532,33 @@ function setStance(battle) {
   p.battle = battle; p.drawing = false; p.drawT = 0;
   if (battle) sfx.ready(); else { sfx.dodge(); swing.active = false; swing.queued = false; }
 }
-/** Where a shot should go: at the target node when the crosshair is close to it, otherwise straight ahead. */
-function aimDir(origin, out, lift = 0) {
-  camera.getWorldDirection(out);
-  const tg = game.target;
-  if (tg && !tg.dead) {
-    v3.copy(tg.center).sub(camera.position).normalize();
-    if (v3.dot(out) > 0.93) { out.copy(tg.center).sub(origin); out.y += lift * out.length(); out.normalize(); }
-  }
-  return out;
+/**
+ * Where a shot should go: always exactly where the crosshair points. Shots leave from the weapon, which sits
+ * off to one side, so they are angled to meet the crosshair's line a little way out instead of flying parallel to it.
+ */
+function lookDir(out) { // straight from the player's view angles, so it is exact on the frame you fire
+  const cp = Math.cos(player.pitch);
+  return out.set(-Math.sin(player.yaw) * cp, Math.sin(player.pitch), -Math.cos(player.yaw) * cp);
+}
+function aimDir(origin, out) {
+  lookDir(out);
+  v3.set(player.pos.x, player.pos.y + EYE, player.pos.z).addScaledVector(out, 60);
+  return out.copy(v3).sub(origin).normalize();
 }
 const arrowM = new THREE.MeshStandardMaterial({ color: 0xd9c79a, roughness: 0.8, emissive: 0x4a4030 });
 function shootArrow(power, o) {
   const dir = new THREE.Vector3();
-  camera.getWorldDirection(v1);
-  v2.copy(camera.position).addScaledVector(v1, 0.9); v2.y -= 0.12;
+  lookDir(v1);
+  v2.set(player.pos.x, player.pos.y + EYE - 0.12, player.pos.z).addScaledVector(v1, 0.9);
   const speed = o.speed || 45 + 35 * power;
-  aimDir(v2, dir, 2.5 / (speed * speed) * 0.5 * 2); // tiny lift to offset arrow drop
+  aimDir(v2, dir); // the arrow leaves along the aim, then gravity gives it its arc
   if (o.yaw) dir.applyAxisAngle(v3.set(0, 1, 0), o.yaw);
   const mesh = new THREE.Group();
   vp(mesh, HC, arrowM, null, AX, [0.012, 0.9, 0.012]);
   vp(mesh, CN, steelM, [0, 0, 0.5], [Math.PI / 2, 0, 0], [0.035, 0.12, 0.035]);
   mesh.position.copy(v2); scene.add(mesh);
   bolts.push({ mesh, vel: dir.multiplyScalar(speed), life: 3, dmg: o.dmg || 12 + 30 * power, owner: 'player', kind: 'arrow', grav: 5, pierce: !!o.pierce });
-  player.reloadT = 0.35; sfx.bow();
+  player.reloadT = RELOAD; player.looseK = 1; sfx.bow();
 }
 function staffShot() {
   if (staffCd > 0) return;
@@ -550,7 +567,7 @@ function staffShot() {
   const dir = aimDir(v2, new THREE.Vector3());
   const mesh = new THREE.Mesh(boltGeo, boltMat(0x9a7aff)); mesh.scale.setScalar(0.6);
   mesh.position.copy(v2); scene.add(mesh);
-  bolts.push({ mesh, vel: dir.multiplyScalar(55), life: 2, dmg: 15, owner: 'player', kind: 'arcane', homing: true, target: game.target });
+  bolts.push({ mesh, vel: dir.multiplyScalar(55), life: 2, dmg: 15, owner: 'player', kind: 'arcane', homing: !!game.lock, target: game.lock }); // only curves toward a locked target
   flash(v2, 0x9a7aff, 14, 0.15); sfx.zap();
 }
 /** Runs every frame: held attacks (combo chain, staff autofire, bow draw) and the shield block. */
@@ -562,21 +579,29 @@ function heldAttack(dt) {
   if (!p.battle) { p.drawing = false; return; }
   if (p.cls === 'warrior') { if (held && !p.blocking && (!swing.active || swing.t / swing.dur > 0.45) && p.stamina >= 6) attack(); }
   else if (p.cls === 'mage') { if (held && p.stanceK > 0.8) staffShot(); }
-  else if (p.drawing) { if (held) p.drawT = Math.min(1.2, p.drawT + dt); }
-  else if (held && p.reloadT <= 0 && p.stamina >= 6 && p.stanceK > 0.8) { p.drawing = true; p.drawT = 0; }
+  else if (p.drawing) {
+    if (held || p.autoLoose) p.drawT = Math.min(1.2, p.drawT + dt);
+    if (p.autoLoose && p.drawT >= MIN_DRAW) loose(); // a quick tap still plays the whole draw
+  } else if (held && p.reloadT <= 0 && p.stamina >= 6 && p.stanceK > 0.8) { p.drawing = true; p.autoLoose = false; p.drawT = 0; sfx.draw(); }
+}
+const MIN_DRAW = 0.34, RELOAD = 0.55;
+function loose() {
+  const p = player;
+  const power = Math.max(0.3, Math.min(1, p.drawT / 0.75));
+  p.drawing = false; p.autoLoose = false; p.drawT = 0; p.looseK = 1;
+  p.stamina = Math.max(0, p.stamina - 6); p.staminaDelay = 0.5;
+  shootArrow(power, {});
 }
 function atkPress() {
   if (game.state !== 'playing') return;
   if (!player.battle) { setStance(true); return; }
+  if (!game.lock && !game.lockOff && game.target) game.lock = game.target; // start fighting what you are facing
   if (player.cls === 'warrior' && !player.blocking) attack();
 }
 function atkRelease() {
   const p = player;
   if (p.cls !== 'archer' || !p.drawing) return;
-  p.drawing = false;
-  const power = Math.max(0.2, Math.min(1, p.drawT / 0.75));
-  p.drawT = 0; p.stamina = Math.max(0, p.stamina - 6); p.staminaDelay = 0.5;
-  shootArrow(power, {});
+  if (p.drawT < MIN_DRAW) p.autoLoose = true; else loose();
 }
 function healSelf(n) {
   player.hp = Math.min(player.maxHp, player.hp + n);
@@ -623,9 +648,20 @@ const nodeCv = document.createElement('canvas'); nodeCv.width = nodeCv.height = 
 const node = new THREE.Sprite(new THREE.SpriteMaterial({ map: new THREE.CanvasTexture(nodeCv), depthTest: false, depthWrite: false, fog: false, transparent: true }));
 node.renderOrder = 20; node.visible = false; scene.add(node);
 /** In battle stance, mark the creature nearest the crosshair that this class can reach. */
+/** Next creature in reach after the current target (Tab / tap the target panel). */
+function cycleTarget() {
+  if (!player.battle) return;
+  const range = CLASSES[player.cls].range;
+  const list = monsters.list.filter((m) => !m.dead && m.dist < range).sort((a, b) => a.dist - b.dist);
+  if (!list.length) return;
+  game.lock = list[(list.indexOf(game.lock || game.target) + 1) % list.length];
+}
 function updateTarget(dt) {
   let best = null, bs = -1;
-  if (player.battle && game.state === 'playing') {
+  const lk = game.lock;
+  if (lk && (lk.dead || !player.battle || game.lockOff || lk.dist > CLASSES[player.cls].range * 1.3 + 8)) game.lock = null;
+  if (game.lock) best = game.lock; // the creature you are fighting stays the target
+  else if (player.battle && game.state === 'playing') {
     camera.getWorldDirection(v1);
     const range = CLASSES[player.cls].range;
     for (const m of monsters.list) {
@@ -644,7 +680,8 @@ function updateTarget(dt) {
   node.scale.setScalar(Math.min(best.def.radius * 2.1 + 0.7, 0.4 + camera.position.distanceTo(best.center) * 0.3) * (1 + Math.sin(game.time * 6) * 0.05));
   node.material.rotation += dt * 1.3; node.material.color.set(CLASSES[player.cls].node).multiplyScalar(1.25);
   panel.style.display = 'block';
-  setText('tname', `${best.def.name} · ${best.def.temper === 'aggressive' ? 'hostile' : best.def.temper}`);
+  setText('tname', `${game.lock === best ? '◆ ' : ''}${best.def.name} · ${best.def.temper === 'aggressive' ? 'hostile' : best.def.temper}`);
+  panel.classList.toggle('locked', game.lock === best);
   $('thp').style.width = Math.max(0, best.hp / best.maxHp * 100) + '%';
 }
 
@@ -723,6 +760,11 @@ addEventListener('keydown', (e) => {
   else if (e.code === 'KeyF') eat();
   else if (e.code === 'KeyQ') dodge();
   else if (e.code === 'KeyR') setStance(!player.battle);
+  else if (e.code === 'Tab') cycleTarget();
+  else if (e.code === 'KeyT') {
+    if (game.lock) game.lock = null; // let go of the current target; attacking locks on again
+    else { game.lockOff = !game.lockOff; msg(game.lockOff ? 'Lock-on camera off' : 'Lock-on camera on'); }
+  }
   else if (e.code === 'KeyE') cast();
   else if (e.code === 'KeyP') saveGame();
   if (e.code === 'Space' || e.code === 'Tab') e.preventDefault();
@@ -731,6 +773,7 @@ addEventListener('keyup', (e) => { keys[e.code] = false; });
 addEventListener('blur', () => { for (const k in keys) keys[k] = false; input.atk = input.alt = false; });
 addEventListener('mousemove', (e) => {
   if (document.pointerLockElement !== renderer.domElement || game.paused) return;
+  if (game.lock) return;
   player.yaw -= e.movementX * 0.0022;
   player.pitch = Math.max(-1.5, Math.min(1.5, player.pitch - e.movementY * 0.0022));
 });
@@ -805,7 +848,7 @@ addEventListener('touchmove', (e) => {
       touch.sprint = l > 0.95 && dy < -0.6;
       knob.style.transform = `translate(${dx * STICK_R}px, ${dy * STICK_R}px)`;
     } else if (t.identifier === touch.lookId) {
-      if (game.state === 'playing') {
+      if (game.state === 'playing' && !game.lock) {
         player.yaw -= (t.clientX - touch.lx) * 0.0055;
         player.pitch = Math.max(-1.5, Math.min(1.5, player.pitch - (t.clientY - touch.ly) * 0.0055));
       }
@@ -837,6 +880,7 @@ bindBtn($('bEat'), () => eat());
 bindBtn($('bStance'), () => setStance(!player.battle));
 bindBtn($('bBlock'), () => { if (!player.battle) setStance(true); touch.block = true; }, () => { touch.block = false; });
 bindBtn($('bSave'), () => saveGame());
+bindBtn($('target'), () => cycleTarget());
 [0, 1, 2].forEach((k) => bindBtn($('s' + k), () => selectSpell(k)));
 
 function dodge() {
@@ -1007,6 +1051,17 @@ function updatePlayer(dt) {
     if (swing.t >= swing.dur) { swing.active = false; if (swing.queued) startSwing(); }
   }
   castCd -= dt;
+  // lock-on: keep the creature being fought in the centre of the view
+  const lk = game.lock;
+  if (lk && !lk.dead && p.battle) {
+    const c = lk.center, ex = c.x - p.pos.x, ez = c.z - p.pos.z, ey = c.y - (p.pos.y + EYE);
+    let dy = (Math.atan2(-ex, -ez) - p.yaw) % (Math.PI * 2);
+    if (dy > Math.PI) dy -= Math.PI * 2; else if (dy < -Math.PI) dy += Math.PI * 2;
+    const kk = Math.min(1, dt * 9);
+    p.yaw += dy * kk;
+    const flat = Math.hypot(ex, ez) || 1, arc = p.cls === 'archer' ? flat * 0.00055 : 0; // archers hold a touch high for the arrow's drop
+    p.pitch += (Math.max(-1.2, Math.min(1.2, Math.atan2(ey, flat) + arc)) - p.pitch) * kk;
+  }
   // camera
   game.shake = Math.max(0, game.shake - dt * 1.6);
   const sh = game.shake * game.shake;
@@ -1167,7 +1222,7 @@ function frame() {
   }
   composer.render();
 }
-game.debug = { attack, cast, selectSpell, eat, dodge, travel, begin, setStance, atkPress, atkRelease, saveGame, readSave, input,
+game.debug = { attack, cast, selectSpell, eat, dodge, travel, begin, setStance, atkPress, atkRelease, saveGame, readSave, input, bolts, rig: { sword, staff, bowArm, shieldArm, nock },
   /** Advance the simulation by n fixed frames (for automated checks). */
   step: (n = 60) => { for (let i = 0; i < n; i++) { lastDayT = update(1 / 60); updateFx(1 / 60); } updateHud(lastDayT); } };
 selectSpell(0);
