@@ -1,0 +1,192 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<title>Ezhunter — Ashen Wilds</title>
+<meta name="description" content="First-person sword and magic survival hunt. Roam three wild maps, hunt monsters, eat to stay alive.">
+<link rel="manifest" href="manifest.webmanifest">
+<meta name="theme-color" content="#0b0806">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Ezhunter">
+<link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<style>
+  :root { --gold: #e8c98a; --ink: rgba(10, 8, 6, .72); }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; overflow: hidden; background: #000; color: #f1e8d8;
+    font-family: "Palatino Linotype", Palatino, "Book Antiqua", Georgia, serif; user-select: none; }
+  canvas { display: block; }
+  #hud { position: fixed; inset: 0; pointer-events: none; display: none; }
+  #vig { position: absolute; inset: 0; background: radial-gradient(ellipse at center, transparent 55%, rgba(0, 0, 0, .55) 100%); }
+  #hurt { position: absolute; inset: 0; opacity: 0; background: radial-gradient(ellipse at center, transparent 35%, rgba(190, 10, 0, .75) 100%); }
+  #heal { position: absolute; inset: 0; opacity: 0; background: radial-gradient(ellipse at center, transparent 40%, rgba(60, 230, 120, .5) 100%); }
+  #cross { position: absolute; left: 50%; top: 50%; width: 6px; height: 6px; margin: -3px; border-radius: 50%;
+    background: rgba(255, 255, 255, .85); box-shadow: 0 0 4px #000; transition: transform .1s; }
+  #cross.hit { transform: scale(2.6) rotate(45deg); border-radius: 0; background: #ffd27a; }
+  .panel { position: absolute; background: linear-gradient(180deg, rgba(20, 16, 12, .78), rgba(8, 6, 5, .78));
+    border: 1px solid rgba(232, 201, 138, .35); border-radius: 6px; padding: 10px 12px; text-shadow: 0 1px 2px #000; }
+  #bars { left: 22px; bottom: 22px; width: 300px; }
+  .bar { display: flex; align-items: center; gap: 8px; margin: 5px 0; font-size: 11px; letter-spacing: .12em; text-transform: uppercase; }
+  .bar span { width: 54px; color: var(--gold); }
+  .track { flex: 1; height: 11px; background: rgba(0, 0, 0, .6); border: 1px solid rgba(255, 255, 255, .14); border-radius: 2px; overflow: hidden; }
+  .fill { height: 100%; width: 100%; transition: width .12s linear; }
+  #hp { background: linear-gradient(90deg, #7c1410, #e2422c); }
+  #st { background: linear-gradient(90deg, #7a6a16, #e8d24a); }
+  #mp { background: linear-gradient(90deg, #1a3a8c, #4aa3ff); }
+  #hg { background: linear-gradient(90deg, #6b3a12, #e08a35); }
+  .low { animation: pulse .7s infinite alternate; }
+  @keyframes pulse { to { filter: brightness(1.9); } }
+  #spells { left: 50%; bottom: 22px; transform: translateX(-50%); display: flex; gap: 8px; }
+  .spell { width: 92px; padding: 7px 4px; text-align: center; font-size: 12px; border: 1px solid rgba(255, 255, 255, .15);
+    border-radius: 4px; background: rgba(0, 0, 0, .4); opacity: .55; }
+  .spell b { display: block; font-size: 10px; color: var(--gold); letter-spacing: .1em; }
+  .spell i { font-style: normal; font-size: 10px; color: #7fb6ff; }
+  .spell.on { opacity: 1; border-color: var(--gold); box-shadow: 0 0 14px rgba(232, 201, 138, .4) inset; }
+  #inv { right: 22px; bottom: 22px; font-size: 14px; line-height: 1.7; min-width: 190px; }
+  #inv em { font-style: normal; color: var(--gold); float: right; margin-left: 18px; }
+  #xp { height: 4px; background: rgba(0, 0, 0, .6); margin-top: 6px; }
+  #xpf { height: 100%; width: 0; background: #62e6ff; }
+  #day { left: 50%; top: 16px; transform: translateX(-50%); font-size: 15px; letter-spacing: .22em; text-transform: uppercase; color: var(--gold); }
+  #log { position: absolute; left: 50%; top: 22%; transform: translateX(-50%); text-align: center; font-size: 20px; text-shadow: 0 2px 6px #000; }
+  #log div { animation: fade 3.2s forwards; margin: 4px 0; }
+  @keyframes fade { 0% { opacity: 0; transform: translateY(8px); } 10% { opacity: 1; transform: none; } 75% { opacity: 1; } 100% { opacity: 0; } }
+  .overlay { position: fixed; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center;
+    background: radial-gradient(ellipse at center, rgba(20, 14, 10, .78), rgba(0, 0, 0, .94)); cursor: pointer; padding: 16px; }
+  .overlay h1 { font-size: clamp(40px, 8vw, 84px); letter-spacing: .28em; margin: 0 0 4px .28em; font-weight: 400; color: var(--gold);
+    text-shadow: 0 0 30px rgba(232, 150, 60, .5); }
+  .overlay h2 { font-weight: 400; letter-spacing: .3em; font-size: 14px; text-transform: uppercase; opacity: .75; margin: 0 0 28px; }
+  .keys { display: grid; grid-template-columns: auto auto; gap: 5px 22px; text-align: left; font-size: 14px; margin-bottom: 26px; }
+  .keys b { color: var(--gold); font-weight: 400; text-align: right; }
+  .lore { max-width: 560px; font-size: 14px; line-height: 1.6; opacity: .85; margin-bottom: 24px; }
+  .go { font-size: 16px; letter-spacing: .3em; text-transform: uppercase; animation: pulse 1s infinite alternate; color: var(--gold); }
+  #pause, #dead { display: none; }
+  #chill { position: absolute; inset: 0; opacity: 0; background: radial-gradient(ellipse at center, transparent 35%, rgba(90, 190, 255, .6) 100%); }
+  #fade { position: fixed; inset: 0; background: #000; opacity: 0; pointer-events: none; transition: opacity .45s; z-index: 5; }
+  #minimap { position: absolute; right: 20px; top: 16px; width: 176px; height: 176px; border-radius: 50%; box-shadow: 0 0 14px rgba(0, 0, 0, .7); }
+  #mmkey { position: absolute; right: 20px; top: 198px; width: 176px; text-align: center; font-size: 10px; letter-spacing: .06em; text-shadow: 0 1px 2px #000; opacity: .85; }
+  #mmkey i { display: inline-block; width: 7px; height: 7px; border-radius: 50%; margin: 0 3px 0 7px; }
+  .dmg { position: absolute; font-size: 20px; font-weight: bold; color: #ffe9a8; text-shadow: 0 0 4px #000, 0 2px 2px #000; transform: translate(-50%, -50%);
+    animation: dmg .8s ease-out forwards; }
+  .dmg.big { font-size: 30px; color: #ffb040; }
+  @keyframes dmg { from { opacity: 1; margin-top: 0; } to { opacity: 0; margin-top: -60px; } }
+  body.touch #minimap { width: 112px; height: 112px; right: 10px; top: 74px; }
+  body.touch #mmkey { display: none; }
+
+  /* ---------- touchscreen controls (enabled on first touch) ---------- */
+  html, body { touch-action: none; overscroll-behavior: none; -webkit-user-select: none; -webkit-touch-callout: none; }
+  #touch { display: none; position: absolute; inset: 0; pointer-events: auto; }
+  body.touch #touch { display: block; }
+  #stick { display: none; position: absolute; width: 130px; height: 130px; margin: -65px 0 0 -65px; border-radius: 50%;
+    border: 2px solid rgba(232, 201, 138, .45); background: rgba(0, 0, 0, .25); }
+  #knob { position: absolute; left: 50%; top: 50%; width: 56px; height: 56px; margin: -28px; border-radius: 50%;
+    background: rgba(232, 201, 138, .55); box-shadow: 0 0 12px rgba(0, 0, 0, .6); }
+  #stick.sprint { border-color: #ffe9a8; box-shadow: 0 0 18px rgba(255, 220, 130, .6); }
+  .tbtn { position: absolute; border-radius: 50%; display: flex; align-items: center; justify-content: center; text-align: center;
+    font-size: 12px; letter-spacing: .08em; text-transform: uppercase; color: #f6ead0; text-shadow: 0 1px 2px #000;
+    background: rgba(14, 10, 8, .55); border: 2px solid rgba(232, 201, 138, .55); }
+  .tbtn.down { background: rgba(232, 201, 138, .45); transform: scale(.93); }
+  #bAtk { right: 22px; bottom: 26px; width: 92px; height: 92px; font-size: 14px; border-color: #e8c98a; }
+  #bCast { right: 128px; bottom: 16px; width: 70px; height: 70px; border-color: #7fb6ff; }
+  #bJump { right: 24px; bottom: 132px; width: 64px; height: 64px; }
+  #bDodge { right: 108px; bottom: 100px; width: 64px; height: 64px; }
+  #bEat { right: 190px; bottom: 96px; width: 56px; height: 56px; border-color: #e08a35; }
+  body.touch #bars { left: 10px; top: 10px; bottom: auto; width: 200px; padding: 5px 8px; }
+  body.touch .bar { margin: 3px 0; font-size: 9px; }
+  body.touch .bar span { width: 44px; }
+  body.touch .track { height: 8px; }
+  body.touch #inv { right: 10px; top: 10px; bottom: auto; font-size: 12px; min-width: 130px; padding: 5px 8px; line-height: 1.5; }
+  body.touch #inv small { display: none; }
+  body.touch #day { top: 8px; font-size: 11px; padding: 5px 9px; }
+  body.touch #spells { bottom: 8px; padding: 5px; gap: 5px; }
+  body.touch .spell { pointer-events: auto; width: 68px; padding: 6px 2px; font-size: 11px; }
+  body.touch .spell b { display: none; }
+  body.touch #log { font-size: 15px; top: 20%; }
+  body.touch #cross { opacity: .7; }
+  .touchhint { display: none; font-size: 13px; opacity: .8; margin: -12px 0 22px; }
+  body.touch .touchhint { display: block; }
+  body.touch .keys { display: none; }
+  #rotate { display: none; }
+  @media (orientation: portrait) {
+    body.touch #rotate { display: flex; position: fixed; inset: 0; z-index: 10; background: #0b0806; align-items: center;
+      justify-content: center; text-align: center; font-size: 20px; color: var(--gold); letter-spacing: .15em; padding: 30px; }
+  }
+  #dead h1 { color: #d8452e; }
+  #stats { font-size: 17px; line-height: 1.9; margin-bottom: 26px; }
+</style>
+<script type="importmap">
+{ "imports": {
+  "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+  "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+} }
+</script>
+</head>
+<body>
+<div id="hud">
+  <div id="vig"></div><div id="hurt"></div><div id="heal"></div><div id="chill"></div>
+  <div id="dmgs"></div>
+  <canvas id="minimap" width="176" height="176"></canvas>
+  <div id="mmkey"><i style="background:#ff4a30"></i>hostile<i style="background:#ffc040"></i>neutral<i style="background:#8fe070"></i>prey<br>&#9670; waygate &nbsp; &#9679; camp</div>
+  <div id="touch">
+    <div id="stick"><div id="knob"></div></div>
+    <div id="bAtk" class="tbtn">Attack</div>
+    <div id="bCast" class="tbtn">Cast</div>
+    <div id="bJump" class="tbtn">Jump</div>
+    <div id="bDodge" class="tbtn">Dodge</div>
+    <div id="bEat" class="tbtn">Eat</div>
+  </div>
+  <div id="cross"></div>
+  <div id="day" class="panel">Day 1</div>
+  <div id="log"></div>
+  <div id="bars" class="panel">
+    <div class="bar"><span>Health</span><div class="track"><div id="hp" class="fill"></div></div></div>
+    <div class="bar"><span>Stamina</span><div class="track"><div id="st" class="fill"></div></div></div>
+    <div class="bar"><span>Mana</span><div class="track"><div id="mp" class="fill"></div></div></div>
+    <div class="bar"><span>Hunger</span><div class="track"><div id="hg" class="fill"></div></div></div>
+  </div>
+  <div id="spells" class="panel">
+    <div class="spell on" id="s0"><b>1</b>Firebolt<br><i>18 mana</i></div>
+    <div class="spell" id="s1"><b>2</b>Frost Nova<br><i>35 mana</i></div>
+    <div class="spell" id="s2"><b>3</b>Mend<br><i>40 mana</i></div>
+  </div>
+  <div id="inv" class="panel">
+    <div>Meat <small>[F to eat]</small><em id="meat">0</em></div>
+    <div>Kills<em id="kills">0</em></div>
+    <div>Hunter rank<em id="lvl">1</em></div>
+    <div id="xp"><div id="xpf"></div></div>
+  </div>
+</div>
+
+<div id="start" class="overlay">
+  <h1>ASHEN WILDS</h1>
+  <h2>Hunt or starve</h2>
+  <div class="lore">Your hunger never stops. Bring down beasts with blade and spell, eat what you kill, and survive as many days as you can.
+    You start at camp in the Verdant Vale. Glowing waygates lead to the Frostfang Tundra and the Cinder Wastes — each with its own beasts: some harmless, some that only fight back, some that hunt <em>you</em>. The mini-map shows gates, camp and nearby creatures.</div>
+  <div class="keys">
+    <b>W A S D</b><span>Move</span>
+    <b>Mouse</b><span>Look</span>
+    <b>Left click</b><span>Sword combo (third hit is heavy)</span>
+    <b>Right click</b><span>Cast selected spell</span>
+    <b>1 2 3 / Wheel</b><span>Select spell</span>
+    <b>Shift</b><span>Sprint</span>
+    <b>Space</b><span>Jump (clears ground slams)</span>
+    <b>Q</b><span>Dodge — brief invulnerability</span>
+    <b>F</b><span>Eat meat</span>
+  </div>
+  <div class="touchhint">Left thumb moves (push to the edge to sprint) · right thumb looks<br>Hold Attack to chain the combo · tap a spell to select it, then Cast</div>
+  <div class="go">Click or tap to begin the hunt</div>
+</div>
+<div id="rotate">Rotate your device to landscape</div>
+<div id="fade"></div>
+<div id="pause" class="overlay"><h1>PAUSED</h1><div class="go">Click to resume</div></div>
+<div id="dead" class="overlay"><h1>YOU FELL</h1><h2 id="cause"></h2><div id="stats"></div><div class="go">Click to hunt again</div></div>
+
+<script type="module" src="./src/main.js"></script>
+<script>
+  // install + offline support
+  if ('serviceWorker' in navigator) addEventListener('load', () => navigator.serviceWorker.register('./sw.js').catch(() => {}));
+</script>
+</body>
+</html>
