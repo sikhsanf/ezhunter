@@ -4,8 +4,9 @@ import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { createWorld, heightAt, WORLD_R, MAPS } from './world.js';
-import { MonsterManager } from './monsters.js';
+import { TYPES, MonsterManager } from './monsters.js';
 import { Sfx } from './audio.js';
+import { createCoop } from './net.js';
 
 const $ = (id) => document.getElementById(id);
 const DAY_LEN = 300; // seconds per full day/night cycle
@@ -369,10 +370,14 @@ function spawnBolt(origin, dir, speed, dmg, owner, name, color, effect) {
   bolts.push({ mesh, vel: dir.clone().multiplyScalar(speed), life: 4, dmg, owner, name, color: color || 0xff3a18, effect });
 }
 const v1 = new THREE.Vector3(), v2 = new THREE.Vector3(), v3 = new THREE.Vector3();
-game.enemyBolt = (from, dmg, name, color = 0xff5a18, effect) => {
-  v1.set(player.pos.x, player.pos.y + 1.2, player.pos.z).sub(from).normalize();
-  spawnBolt(from, v1, 19, dmg, 'enemy', name, color, effect);
+function enemyShot(from, vel, dmg, name, color, effect) {
+  spawnBolt(from, vel.clone().normalize(), vel.length(), dmg, 'enemy', name, color, effect);
   flash(from, color, 30, 0.25); sfx.fire();
+}
+game.enemyBolt = (from, dmg, name, color = 0xff5a18, effect, tgt = player) => {
+  v1.set(tgt.pos.x, tgt.pos.y + 1.2, tgt.pos.z).sub(from).normalize().multiplyScalar(19);
+  enemyShot(from, v1, dmg, name, color, effect);
+  if (coop.role === 'host') coop.enemyBolt(from, v1, dmg, name, color, effect);
 };
 function explode(pos, dmg, direct) {
   burst(pos, 0xff7a22, 46, 9, 0.7, 5); burst(pos, 0xffd27a, 16, 4, 0.4, 0);
@@ -406,12 +411,19 @@ function dropLoot(pos, kind, value) {
 }
 
 // ---------------------------------------------------------------- combat
-function hitMonster(m, dmg, kb) {
+function hitMonster(m, dmg, kb, opt) {
   const dx = m.pos.x - player.pos.x, dz = m.pos.z - player.pos.z, d = Math.hypot(dx, dz) || 1;
   if (player.battle && !game.lockOff && (!game.lock || game.lock.dead)) game.lock = m;
   const amount = dmg * player.dmgMul * (0.9 + Math.random() * 0.2);
   floatText(Math.round(amount), m.center, m.def.height, amount >= 30 * player.dmgMul);
-  m.takeDamage(amount, game, dx / d, dz / d, kb);
+  if (opt && opt.slow) m.slowT = opt.slow;
+  if (coop.mirror) { // the host owns this creature: tell it, and show the hit right away
+    coop.sendHit(m, amount, kb, opt);
+    m.flashT = 0.12; m.hp = Math.max(1, m.hp - amount); m.showBar();
+  } else {
+    if (opt && opt.stun && m.def.mass < 1 && m.state !== 'wander' && m.state !== 'flee') { m.state = 'recover'; m.timer = 1.2; }
+    m.takeDamage(amount, game, dx / d, dz / d, kb);
+  }
   $('cross').classList.add('hit'); setTimeout(() => $('cross').classList.remove('hit'), 110);
 }
 game.onKill = (m) => {
@@ -445,6 +457,10 @@ game.damagePlayer = (dmg, from, name, kb = 6, effect) => {
   return true;
 };
 game.slam = (x, z, r, dmg, name, from, effect) => {
+  localSlam(x, z, r, dmg, name, from, effect);
+  if (coop.role === 'host') coop.slam(x, z, r, dmg, name, from, effect);
+};
+function localSlam(x, z, r, dmg, name, from, effect) {
   const y = heightAt(x, z);
   v1.set(x, y + 0.3, z);
   const dust = effect === 'chill' ? 0x8fe6ff : effect === 'burn' ? 0xff5a18 : 0xb89a6a;
@@ -452,13 +468,36 @@ game.slam = (x, z, r, dmg, name, from, effect) => {
   const d = Math.hypot(player.pos.x - x, player.pos.z - z);
   if (d < 22) game.shake = Math.max(game.shake, 0.7 * (1 - d / 22));
   if (d < r && player.pos.y - heightAt(player.pos.x, player.pos.z) < 1) game.damagePlayer(dmg, from, name, 13, effect);
+}
+/** Which hunter a monster goes for: the nearest one in this map. */
+game.pickTarget = (m) => {
+  let best = player, bd = Infinity;
+  for (const t of coop.targets()) {
+    if (t === player && game.state !== 'playing') continue;
+    const d = Math.hypot(t.pos.x - m.pos.x, t.pos.z - m.pos.z);
+    if (d < bd) { bd = d; best = t; }
+  }
+  return best;
 };
+game.damageTarget = (tgt, dmg, from, name, kb, effect) => {
+  if (tgt === player) game.damagePlayer(dmg, from, name, kb, effect);
+  else coop.hurt(tgt, dmg, from, name, kb, effect); // that hunter's own device decides if they dodged or blocked
+};
+game.anchors = () => coop.targets().map((t) => t.pos);
+/** Another hunter's arrow or spell: shown here, but it deals no damage on this device. */
+function ghostShot(kind, origin, vel) {
+  let mesh;
+  if (kind === 'arrow') { mesh = new THREE.Group(); vp(mesh, HC, arrowM, null, AX, [0.012, 0.9, 0.012]); vp(mesh, CN, steelM, [0, 0, 0.5], [Math.PI / 2, 0, 0], [0.035, 0.12, 0.035]); }
+  else { mesh = new THREE.Mesh(boltGeo, kind === 'arcane' ? boltMat(0x9a7aff) : boltMatP); if (kind === 'arcane') mesh.scale.setScalar(0.6); }
+  mesh.position.copy(origin); scene.add(mesh);
+  bolts.push({ mesh, vel, life: 2.5, dmg: 0, owner: 'ghost', kind, grav: kind === 'arrow' ? 5 : 0, color: kind === 'arcane' ? 0x9a7aff : 0xff7a22 });
+}
 
 function startSwing() {
   if (player.stamina < 6) { sfx.deny(); return; }
   swing.active = true; swing.t = 0; swing.hitDone = false; swing.queued = false;
   swing.type = swing.combo % 3; swing.dur = swing.type === 2 ? 0.52 : 0.4;
-  swing.combo++; swing.comboT = 1.1;
+  swing.combo++; swing.comboT = 1.1; player.atkSeq = (player.atkSeq || 0) + 1;
   player.stamina -= swing.type === 2 ? 11 : 7; player.staminaDelay = 0.6;
   sfx.swing();
   const tg = game.target; // step in toward the target node
@@ -494,20 +533,20 @@ function cast() {
   if (!player.battle) { setStance(true); return; }
   const s = SPELLS[spell];
   if (player.mana < s.cost) { sfx.deny(); msg('Not enough mana'); castCd = 0.3; return; }
-  player.mana -= s.cost; castCd = 0.55; orbKick = 1;
+  player.mana -= s.cost; castCd = 0.55; orbKick = 1; player.atkSeq = (player.atkSeq || 0) + 1;
   if (player.cls !== 'mage') { classSkill(); return; }
   if (spell === 0) {
     camera.getWorldDirection(v1);
     v2.copy(camera.position).addScaledVector(v1, 0.9);
     v3.set(-0.3, -0.18, 0).applyQuaternion(camera.quaternion); v2.add(v3);
     gem.getWorldPosition(v2); aimDir(v2, v1); // spells leave from the staff's crystal
-    spawnBolt(v2, v1, 42, 36, 'player');
+    spawnBolt(v2, v1, 42, 36, 'player'); coop.shot('fire', v2, v3.copy(v1).multiplyScalar(42));
     flash(v2, 0xff8a33, 40, 0.2); sfx.fire();
   } else if (spell === 1) {
     const R = 10;
     for (const m of monsters.list) {
       if (m.dead || m.dist > R + m.def.radius) continue;
-      hitMonster(m, 14, 0.5); m.slowT = 5.5;
+      hitMonster(m, 14, 0.5, { slow: 5.5 });
       burst(m.center, 0x8fe6ff, 12, 3, 0.8, 1);
     }
     for (let i = 0; i < 40; i++) {
@@ -559,6 +598,7 @@ function shootArrow(power, o) {
   mesh.position.copy(v2); scene.add(mesh);
   bolts.push({ mesh, vel: dir.multiplyScalar(speed), life: 3, dmg: o.dmg || 12 + 30 * power, owner: 'player', kind: 'arrow', grav: 5, pierce: !!o.pierce });
   player.reloadT = RELOAD; player.looseK = 1; sfx.bow();
+  player.atkSeq = (player.atkSeq || 0) + 1; coop.shot('arrow', v2, bolts[bolts.length - 1].vel);
 }
 function staffShot() {
   if (staffCd > 0) return;
@@ -569,6 +609,7 @@ function staffShot() {
   mesh.position.copy(v2); scene.add(mesh);
   bolts.push({ mesh, vel: dir.multiplyScalar(55), life: 2, dmg: 15, owner: 'player', kind: 'arcane', homing: !!game.lock, target: game.lock }); // only curves toward a locked target
   flash(v2, 0x9a7aff, 14, 0.15); sfx.zap();
+  player.atkSeq = (player.atkSeq || 0) + 1; coop.shot('arcane', v2, bolts[bolts.length - 1].vel);
 }
 /** Runs every frame: held attacks (combo chain, staff autofire, bow draw) and the shield block. */
 function heldAttack(dt) {
@@ -627,8 +668,7 @@ function classSkill() {
         if (m.dead || m.dist > 4.2 + m.def.radius) continue;
         const dx = m.pos.x - P.x, dz = m.pos.z - P.z;
         if ((dx * v1.x + dz * v1.z) / (m.dist || 1) < 0.3) continue;
-        hitMonster(m, 18, 3.5); m.slowT = 3;
-        if (!m.dead && m.def.mass < 1 && m.state !== 'wander' && m.state !== 'flee') { m.state = 'recover'; m.timer = 1.2; }
+        hitMonster(m, 18, 3.5, { slow: 3, stun: true });
         burst(m.center, 0xffe9a8, 14, 6, 0.4, 6);
       }
       sfx.block(); sfx.hit(); game.shake = Math.max(game.shake, 0.3);
@@ -751,6 +791,7 @@ function seedWorld() {
 const keys = {};
 const input = { atk: false, alt: false };
 addEventListener('keydown', (e) => {
+  if (e.target && e.target.tagName === 'INPUT') { if (e.code === 'Escape') toggleCoop(false); return; }
   if (e.repeat) return;
   keys[e.code] = true;
   if (game.state !== 'playing' || game.paused) return;
@@ -767,10 +808,24 @@ addEventListener('keydown', (e) => {
   }
   else if (e.code === 'KeyE') cast();
   else if (e.code === 'KeyP') saveGame();
+  else if (e.code === 'KeyO') toggleCoop();
   if (e.code === 'Space' || e.code === 'Tab') e.preventDefault();
 });
 addEventListener('keyup', (e) => { keys[e.code] = false; });
 addEventListener('blur', () => { for (const k in keys) keys[k] = false; input.atk = input.alt = false; });
+// ---------- co-op panel ----------
+function toggleCoop(open = !game.panel) {
+  if (game.state !== 'playing' && open) return;
+  game.panel = open;
+  $('coopPanel').style.display = open ? 'flex' : 'none';
+  if (open) { coop.render(); $('coopName').value = coop.name; if (document.pointerLockElement) document.exitPointerLock(); if (!coop.role) game.paused = true; }
+  else { game.paused = false; $('pause').style.display = 'none'; if (!touch.on && game.state === 'playing') lock(); }
+}
+$('coopPill').addEventListener('click', () => toggleCoop());
+$('coopClose').addEventListener('click', () => toggleCoop(false));
+$('coopHost').addEventListener('click', () => { coop.setName($('coopName').value); game.paused = false; coop.host(); });
+$('coopJoin').addEventListener('click', () => { coop.setName($('coopName').value); game.paused = false; coop.join($('coopCode').value); });
+$('coopLeave').addEventListener('click', () => { coop.leave(); if (game.panel) game.paused = true; });
 addEventListener('mousemove', (e) => {
   if (document.pointerLockElement !== renderer.domElement || game.paused) return;
   if (game.lock) return;
@@ -793,7 +848,10 @@ function lock() { try { const p = renderer.domElement.requestPointerLock(); if (
 document.addEventListener('pointerlockchange', () => {
   const locked = document.pointerLockElement === renderer.domElement;
   if (locked) { hadLock = true; game.paused = false; $('pause').style.display = 'none'; }
-  else if (hadLock && game.state === 'playing') { game.paused = true; $('pause').style.display = 'flex'; }
+  else if (hadLock && game.state === 'playing' && !game.panel) {
+    if (coop.role) return; // a shared hunt cannot pause: just click the view to look around again
+    game.paused = true; $('pause').style.display = 'flex';
+  }
 });
 function begin(cls, sv) {
   if (game.state !== 'menu') return;
@@ -948,6 +1006,11 @@ function drawMinimap() {
     c.fillStyle = TEMPER_COL[m.def.temper];
     c.beginPath(); c.arc(q[0], q[1], Math.min(4.5, 1.6 + m.def.radius), 0, 6.3); c.fill();
   }
+  for (const R of coop.remotes()) { // fellow hunters
+    if (R.map !== game.mapId) continue;
+    const q = proj(R.pos.x, R.pos.z, true);
+    c.fillStyle = '#4aa3ff'; c.strokeStyle = '#fff'; c.lineWidth = 1.5; c.beginPath(); c.arc(q[0], q[1], 4.5, 0, 6.3); c.fill(); c.stroke();
+  }
   for (const l of loot) { const q = proj(l.mesh.position.x, l.mesh.position.z, false); if (q) { c.fillStyle = '#62e6ff'; c.fillRect(q[0] - 1, q[1] - 1, 2, 2); } }
   const diamond = (q, col, r) => {
     c.fillStyle = col; c.strokeStyle = '#000'; c.lineWidth = 1.5; c.globalAlpha = q[2] ? 0.75 : 1;
@@ -985,7 +1048,7 @@ function updateHud(dayT) {
 }
 function die(cause) {
   if (game.state === 'dead') return;
-  game.state = 'dead'; sfx.die();
+  game.state = 'dead'; sfx.die(); coop.leave();
   $('cause').textContent = cause;
   const t = Math.floor(game.time);
   $('stats').innerHTML = `Survived to <b>Day ${game.day}</b> (${Math.floor(t / 60)}m ${t % 60}s)<br>Beasts slain: <b>${player.kills}</b><br>Hunter rank: <b>${player.level}</b>`;
@@ -1083,10 +1146,13 @@ function updateBolts(dt) {
     }
     bp.addScaledVector(b.vel, dt); b.life -= dt;
     if (b.kind === 'arrow') { v1.copy(bp).add(b.vel); b.mesh.lookAt(v1); }
-    else burst(bp, b.owner !== 'player' ? b.color : b.kind === 'arcane' ? 0x9a7aff : 0xff7a22, b.kind === 'arcane' ? 1 : 2, 0.8, 0.35, -1, 0.15);
+    else burst(bp, b.owner === 'enemy' || b.owner === 'ghost' ? b.color : b.kind === 'arcane' ? 0x9a7aff : 0xff7a22, b.kind === 'arcane' ? 1 : 2, 0.8, 0.35, -1, 0.15);
     let done = b.life <= 0, direct = null;
     if (bp.y < heightAt(bp.x, bp.z) + 0.1) done = true;
-    if (b.owner === 'player') {
+    if (b.owner === 'ghost') {
+      for (const m of monsters.list) if (!m.dead && m.center.distanceTo(bp) < m.def.radius + 0.55) { done = true; break; }
+      if (done) { burst(bp, b.color, 14, 5, 0.4, 5); if (b.kind === 'fire') flash(bp, 0xff8a33, 60, 0.3); }
+    } else if (b.owner === 'player') {
       for (const m of monsters.list) {
         if (!m.dead && !(b.hit && b.hit.has(m)) && m.center.distanceTo(bp) < m.def.radius + 0.55) { direct = m; break; }
       }
@@ -1162,6 +1228,7 @@ function update(dt) {
 
   updatePlayer(dt);
   updateTarget(dt);
+  coop.frame(dt);
   game.saveT = (game.saveT || 0) + dt;
   if (game.saveT > 20) { game.saveT = 0; saveGame(true); }
   // waygates: walk into one to travel to another map
@@ -1222,7 +1289,9 @@ function frame() {
   }
   composer.render();
 }
-game.debug = { attack, cast, selectSpell, eat, dodge, travel, begin, setStance, atkPress, atkRelease, saveGame, readSave, input, bolts, rig: { sword, staff, bowArm, shieldArm, nock },
+const coop = createCoop({ game, player, scene, monsters, MAPS, TYPES, CLASSES, heightAt, msg, localSlam, enemyShot, ghostShot });
+game.coop = coop;
+game.debug = { coop, toggleCoop, attack, cast, selectSpell, eat, dodge, travel, begin, setStance, atkPress, atkRelease, saveGame, readSave, input, bolts, rig: { sword, staff, bowArm, shieldArm, nock },
   /** Advance the simulation by n fixed frames (for automated checks). */
   step: (n = 60) => { for (let i = 0; i < n; i++) { lastDayT = update(1 / 60); updateFx(1 / 60); } updateHud(lastDayT); } };
 selectSpell(0);

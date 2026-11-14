@@ -301,8 +301,10 @@ function angDiff(a, b) {
   return d;
 }
 
+let SEQ = 0;
 class Monster {
   constructor(type, x, z) {
+    this.id = ++SEQ; // lets co-op guests refer to the same creature as the host
     this.type = type;
     this.def = TYPES[type];
     this.model = BUILD[this.def.look]();
@@ -367,9 +369,11 @@ class Monster {
   }
 
   update(dt, game) {
-    const P = game.player.pos, pos = this.pos, def = this.def, M = this.model;
+    const LP = game.player.pos, pos = this.pos, def = this.def;
+    this.dist = Math.hypot(LP.x - pos.x, LP.z - pos.z) || 0.001; // always the distance to the local hunter
+    // in co-op the host's monsters go for whichever hunter is nearest
+    const tgt = this.dead ? game.player : game.pickTarget(this), P = tgt.pos;
     const dx = P.x - pos.x, dz = P.z - pos.z, d = Math.hypot(dx, dz) || 0.001;
-    this.dist = d;
     if (this.dead) {
       this.deadT += dt;
       if (def.hover) { this.g.scale.multiplyScalar(Math.max(0, 1 - dt * 3)); pos.y -= dt * 2; }
@@ -438,7 +442,7 @@ class Monster {
             game.slam(cx, cz, 4.4, def.dmg, def.name, pos, def.effect);
             this.state = 'recover'; this.timer = def.recover;
           } else {
-            game.enemyBolt(this.center, def.dmg, def.name, def.bolt, def.effect);
+            game.enemyBolt(this.center, def.dmg, def.name, def.bolt, def.effect, tgt);
             this.state = 'recover'; this.timer = def.recover; this.shootCd = 1.6 + Math.random() * 1.2;
           }
         }
@@ -447,7 +451,7 @@ class Monster {
         move = face = this.lock; speed = def.attack === 'bite' ? 15 : 16;
         if (!this.didHit && d < def.radius + 1.1) {
           this.didHit = true;
-          game.damagePlayer(def.dmg, pos, def.name, def.attack === 'charge' ? 14 : 6, def.effect);
+          game.damageTarget(tgt, def.dmg, pos, def.name, def.attack === 'charge' ? 14 : 6, def.effect);
         }
         if (this.timer <= 0) { this.state = 'recover'; this.timer = def.recover; }
         break;
@@ -460,6 +464,31 @@ class Monster {
     pos.x += Math.sin(move) * speed * dt; pos.z += Math.cos(move) * speed * dt;
     const r = Math.hypot(pos.x, pos.z);
     if (r > WORLD_R) { pos.x *= WORLD_R / r; pos.z *= WORLD_R / r; this.walking = false; }
+    this.finish(dt, speed, face, squash);
+  }
+
+  /** Co-op guest: this creature is run by the host; glide to where the host says it is and animate. */
+  mirror(dt, game) {
+    const LP = game.player.pos, pos = this.pos;
+    this.dist = Math.hypot(LP.x - pos.x, LP.z - pos.z) || 0.001;
+    if (this.dead) {
+      this.deadT += dt;
+      if (this.def.hover) { this.g.scale.multiplyScalar(Math.max(0, 1 - dt * 3)); pos.y -= dt * 2; }
+      else { this.g.rotation.z = Math.min(Math.PI / 2, this.deadT * 5); if (this.deadT > 3) pos.y -= dt * 0.7; }
+      if (this.deadT > 5) this.remove = true;
+      return;
+    }
+    this.flashT -= dt; this.hurtT -= dt;
+    const ox = pos.x, oz = pos.z, k = Math.min(1, dt * 10);
+    pos.x += (this.tx - pos.x) * k; pos.z += (this.tz - pos.z) * k;
+    const speed = Math.min(16, Math.hypot(pos.x - ox, pos.z - oz) / Math.max(dt, 1e-3));
+    this.walking = speed > 0.4;
+    this.finish(dt, speed, this.tf, this.state === 'windup' ? this.wind || 0 : 0);
+  }
+
+  /** Shared by the simulated update and the co-op mirror: ground height, facing and animation. */
+  finish(dt, speed, face, squash) {
+    const pos = this.pos, def = this.def, M = this.model;
     this.phase += dt * (1.5 + Math.abs(speed) * 1.6);
     const ground = heightAt(pos.x, pos.z);
     pos.y = def.hover ? ground + def.hover + Math.sin(this.phase * 0.6) * 0.3 : ground;
@@ -514,13 +543,13 @@ export class MonsterManager {
     return m;
   }
   spawnNear(type, minD, maxD, n = 1) {
-    const P = this.game.player.pos;
+    const P = this.anchor || this.game.player.pos;
     const a = Math.random() * 6.28, r = minD + Math.random() * (maxD - minD);
     const x = P.x + Math.sin(a) * r, z = P.z + Math.cos(a) * r;
     if (Math.hypot(x, z) > WORLD_R - 5) return;
     for (let i = 0; i < n; i++) this.spawn(type, x + (Math.random() - 0.5) * 8, z + (Math.random() - 0.5) * 8);
   }
-  seed() { for (const [type, a, b, n] of SEEDS[this.game.mapId]) this.spawnNear(type, a, b, n); }
+  seed() { this.anchor = null; for (const [type, a, b, n] of SEEDS[this.game.mapId]) this.spawnNear(type, a, b, n); }
   dispose(m) {
     this.scene.remove(m.g);
     const seen = new Set();
@@ -530,18 +559,24 @@ export class MonsterManager {
   clear() { for (const m of this.list) this.dispose(m); this.list.length = 0; this.t = 0; }
   update(dt) {
     const game = this.game, L = this.list;
+    if (game.coop && game.coop.mirror) { // co-op guest in the host's map: no simulation here
+      for (const m of L) m.mirror(dt, game);
+      for (let i = L.length - 1; i >= 0; i--) if (L[i].remove) { this.dispose(L[i]); L.splice(i, 1); }
+      return;
+    }
     for (const m of L) m.update(dt, game);
+    const anchors = game.anchors(); // every hunter in this map
     this.t -= dt;
     if (this.t <= 0) {
       this.t = 1;
       const want = SPAWNS[game.mapId](game.day, game.isNight), have = {};
       for (const m of L) if (!m.dead) have[m.type] = (have[m.type] || 0) + 1;
       for (const type in want) {
-        if ((have[type] || 0) < want[type]) this.spawnNear(type, 85, 125, TYPES[type].pack || 1);
+        if ((have[type] || 0) < want[type]) { this.anchor = anchors[Math.random() * anchors.length | 0]; this.spawnNear(type, 85, 125, TYPES[type].pack || 1); }
       }
       for (const m of L) {
         if (m.dead) continue;
-        if (m.dist > 175) m.remove = true;
+        if (Math.min(...anchors.map((a) => Math.hypot(a.x - m.pos.x, a.z - m.pos.z))) > 175) m.remove = true;
         else if (m.def.nightOnly && !game.isNight) { m.die(game, false); game.burst(m.center, 0xff7a22, 20, 4, 0.8, 0); }
       }
     }
