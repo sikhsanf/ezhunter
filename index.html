@@ -66,6 +66,9 @@
   #coopPill { position: absolute; left: 22px; top: 16px; padding: 6px 12px; font-size: 12px; letter-spacing: .14em; text-transform: uppercase;
     pointer-events: auto; cursor: pointer; color: var(--gold); }
   #musicPill { position: absolute; left: 22px; top: 54px; padding: 4px 11px; font-size: 15px; pointer-events: auto; cursor: pointer; color: var(--gold); }
+  #musicPill.live { box-shadow: 0 0 10px rgba(232, 201, 138, .5); animation: pulse 1.2s infinite alternate; }
+  #qPill { position: absolute; left: 66px; top: 54px; padding: 6px 10px; font-size: 11px; letter-spacing: .1em; pointer-events: auto; cursor: pointer; color: var(--gold); }
+  body.touch #qPill { left: auto; right: 170px; top: 38px; font-size: 9px; padding: 5px 8px; }
   #musicPill.off { opacity: .45; text-decoration: line-through; }
   body.touch #musicPill { left: auto; right: 132px; top: 38px; font-size: 13px; padding: 3px 9px; }
   #coopPill.on { border-color: #4aa3ff; color: #bfe0ff; box-shadow: 0 0 12px rgba(74, 163, 255, .45); }
@@ -187,6 +190,7 @@
   <div id="cross"></div>
   <div id="coopPill" class="panel">Co-op</div>
   <div id="musicPill" class="panel" title="Music on / off (M)">&#9835;</div>
+  <div id="qPill" class="panel" title="Graphics quality: click to change">Auto</div>
   <div id="target" class="panel"><span id="tname"></span><div class="track"><div id="thp" class="fill"></div></div></div>
   <div id="stance">Normal stance</div>
   <div id="day" class="panel">Day 1</div>

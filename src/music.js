@@ -150,13 +150,13 @@ for (const k in TUNES) compile(TUNES[k]);
 
 // ------------------------------------------------------------------ the band
 export class Music {
-  constructor() { this.cur = null; this.want = null; this.vol = 0.55; this.muted = false; }
+  constructor() { this.cur = null; this.want = null; this.vol = 0.7; this.muted = false; }
 
   init(ctx) {
     if (this.ctx || !ctx) return;
     this.ctx = ctx;
     this.out = ctx.createGain(); this.out.gain.value = this.muted ? 0 : this.vol;
-    const comp = ctx.createDynamicsCompressor(); comp.threshold.value = -16; comp.ratio.value = 3; comp.attack.value = 0.01; comp.release.value = 0.25;
+    const comp = ctx.createDynamicsCompressor(); comp.threshold.value = -14; comp.ratio.value = 4; comp.attack.value = 0.01; comp.release.value = 0.25;
     this.out.connect(comp); comp.connect(ctx.destination);
     // hall reverb from a generated impulse: decaying noise, darker towards the tail
     const len = Math.floor(ctx.sampleRate * 3), ir = ctx.createBuffer(2, len, ctx.sampleRate);
@@ -175,6 +175,8 @@ export class Music {
     setInterval(() => this.tick(), 50);
     if (this.want) { const w = this.want; this.want = null; this.play(w); }
   }
+  /** True once sound is actually coming out (the browser has allowed audio and a tune is running). */
+  get playing() { return !!(this.ctx && this.ctx.state === 'running' && this.cur && !this.muted); }
   setMuted(m) { this.muted = m; if (this.out) this.out.gain.setTargetAtTime(m ? 0 : this.vol, this.ctx.currentTime, 0.15); }
 
   /** Cross-fade to a tune by name (no-op if it is already playing). */
@@ -219,6 +221,7 @@ export class Music {
     return {
       /** Plucked harp: bright attack, long ring. */
       harp(t, f, vel) {
+        vel *= 1.9;
         const end = t + 2.2, g = ctx.createGain();
         g.gain.setValueAtTime(0.0001, t); g.gain.linearRampToValueAtTime(vel, t + 0.006); g.gain.exponentialRampToValueAtTime(vel * 0.35, t + 0.18); g.gain.exponentialRampToValueAtTime(0.0001, end);
         const a = osc('triangle', f, t, end), b = osc('sine', f * 2, t, end, 3), c = osc('sine', f * 3, t, end), gb = ctx.createGain(), gc = ctx.createGain();
@@ -228,6 +231,7 @@ export class Music {
       },
       /** Tin whistle: pure tone, breath, late vibrato, optional "cut" grace note at the start. */
       whistle(t, f, dur, vel, cut = 0, rev = 0.5) {
+        vel *= 2.3;
         const end = t + dur + 0.12, g = env(t, 0.035, dur, 0.1, vel);
         const a = osc('sine', f, t, end), b = osc('sine', f * 2, t, end), c = osc('triangle', f * 3, t, end), gb = ctx.createGain(), gc = ctx.createGain();
         gb.gain.value = 0.2; gc.gain.value = 0.05;
@@ -241,6 +245,7 @@ export class Music {
       },
       /** Fiddle: two slightly detuned saws through a body filter, with vibrato. */
       fiddle(t, f, dur, vel) {
+        vel *= 2.0;
         const end = t + dur + 0.16, g = env(t, 0.05, dur, 0.14, vel);
         const a = osc('sawtooth', f, t, end, -4), b = osc('sawtooth', f, t, end, 5);
         const lp = ctx.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = Math.min(5200, 1400 + f * 2.2); lp.Q.value = 0.8;
@@ -253,7 +258,7 @@ export class Music {
       pad(t, freqs, dur, vel) {
         const end = t + dur + 1.0, g = ctx.createGain();
         g.gain.setValueAtTime(0.0001, t); g.gain.linearRampToValueAtTime(vel, t + Math.min(0.7, dur * 0.4)); g.gain.setValueAtTime(vel, t + dur); g.gain.linearRampToValueAtTime(0.0001, end);
-        const lp = ctx.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 950; lp.Q.value = 0.5;
+        const lp = ctx.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 1500; lp.Q.value = 0.5;
         for (const f of freqs) { osc('sawtooth', f, t, end, -7).connect(lp); osc('sawtooth', f, t, end, 7).connect(lp); }
         lp.connect(g); out(g, 0.6);
       },
@@ -266,6 +271,7 @@ export class Music {
         bp.connect(g); out(g, 0.35);
       },
       bass(t, f, dur, vel) {
+        vel *= 0.8;
         const end = t + dur + 0.2, g = ctx.createGain();
         g.gain.setValueAtTime(0.0001, t); g.gain.linearRampToValueAtTime(vel, t + 0.012); g.gain.exponentialRampToValueAtTime(vel * 0.5, t + dur * 0.5); g.gain.exponentialRampToValueAtTime(0.0001, end);
         const lp = ctx.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 420;
@@ -274,6 +280,7 @@ export class Music {
       },
       /** Bodhrán / war drum: a pitched skin thump plus the tap of the beater. */
       drum(t, vel, pitch = 90) {
+        vel *= 1.4;
         const o = ctx.createOscillator(), g = ctx.createGain();
         o.frequency.setValueAtTime(pitch * 2.3, t); o.frequency.exponentialRampToValueAtTime(pitch, t + 0.05);
         g.gain.setValueAtTime(vel * 0.5, t); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.26);
@@ -290,6 +297,7 @@ export class Music {
       },
       /** Bell / chime: inharmonic partials, long shimmer. */
       bell(t, f, vel, shift = 1) {
+        vel *= 1.8;
         const end = t + 3, g = ctx.createGain();
         g.gain.setValueAtTime(0.0001, t); g.gain.linearRampToValueAtTime(vel, t + 0.004); g.gain.exponentialRampToValueAtTime(0.0001, end);
         [[1, 1], [2.76, 0.35], [5.4, 0.12]].forEach(([m, a]) => { const pg = ctx.createGain(); pg.gain.value = a; osc('sine', f * m * shift, t, end).connect(pg); pg.connect(g); });

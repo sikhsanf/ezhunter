@@ -1,9 +1,9 @@
 // Service worker: makes the game installable and playable offline.
 // Bump VERSION whenever files change so installed copies pick up the update.
-const VERSION = 'ezhunter-v5';
+const VERSION = 'ezhunter-v6';
 const SHELL = [
   './', './index.html', './manifest.webmanifest',
-  './src/main.js', './src/world.js', './src/monsters.js', './src/audio.js', './src/net.js', './src/music.js',
+  './src/main.js', './src/world.js', './src/monsters.js', './src/audio.js', './src/net.js', './src/music.js', './src/chibi.js',
   './icons/icon-192.png', './icons/icon-512.png',
 ];
 const CDN = 'https://cdn.jsdelivr.net/npm/three@0.160.0/';

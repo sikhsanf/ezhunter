@@ -252,6 +252,10 @@ export function createWorld(scene) {
   sky.renderOrder = -10; sky.frustumCulled = false;
   scene.add(sky);
   const windU = { value: 0 };
+  const windV = { value: new THREE.Vector3(1, 0, 0.4) };  // xy = direction, z = strength
+  const playerU = { value: new THREE.Vector3() };         // grass parts around the hunter
+  const WIND_BASE = { vale: 0.5, tundra: 0.95, wastes: 0.65 };
+  let grassScale = 1;
 
   const W = { map: null, id: null, gates: [], liquid: null };
   let group = null, grid = new Map(), chunks = new Map(), grassGeo = null, grassMat = null, lavaMat = null, gateDiscs = [];
@@ -350,6 +354,18 @@ export function createWorld(scene) {
 
     // ---------- trees and other flora ----------
     const stdMat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.9, flatShading: true });
+    const swayMat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.9, flatShading: true });
+    swayMat.onBeforeCompile = (sh) => {
+      sh.uniforms.uTime = windU; sh.uniforms.uWind = windV;
+      sh.vertexShader = 'uniform float uTime; uniform vec3 uWind;\n' + sh.vertexShader.replace('#include <begin_vertex>', `#include <begin_vertex>
+        #ifdef USE_INSTANCING
+          vec4 tp0 = instanceMatrix * vec4(0.0, 0.0, 0.0, 1.0);
+          float lift = max(position.y - 1.2, 0.0);
+          float gst = sin(uTime * 1.1 + tp0.x * 0.21 + tp0.z * 0.17) + 0.4 * sin(uTime * 2.7 + tp0.x * 0.5);
+          transformed.x += gst * uWind.z * 0.035 * lift; transformed.z += cos(uTime * 0.9 + tp0.z * 0.23) * uWind.z * 0.02 * lift;
+        #endif`);
+    };
+    const SWAYS = { pine: 1, snowpine: 1, oak: 1, bush: 1, dead: 1, charred: 1 };
     for (const [kind, count] of map.flora) {
       const info = FLORA_INFO[kind], list = [];
       for (let a = 0; a < count * 7 && list.length < count; a++) {
@@ -362,7 +378,7 @@ export function createWorld(scene) {
       }
       const mat = info.glow
         ? new THREE.MeshStandardMaterial({ vertexColors: true, color: info.glow[2], emissive: info.glow[0], emissiveIntensity: info.glow[1], roughness: 0.3, flatShading: true })
-        : stdMat;
+        : SWAYS[kind] ? swayMat : stdMat;
       const im = new THREE.InstancedMesh(FLORA[kind](), mat, list.length);
       list.forEach((t, i) => {
         q.setFromEuler(eul.set((t.v - 0.5) * 0.12, t.rot, (rng() - 0.5) * 0.12));
@@ -399,13 +415,18 @@ export function createWorld(scene) {
     grassGeo = tuftGeometry(map.grass, rng);
     grassMat = new THREE.MeshLambertMaterial({ vertexColors: true, side: THREE.DoubleSide });
     grassMat.onBeforeCompile = (s) => {
-      s.uniforms.uTime = windU;
-      s.vertexShader = 'uniform float uTime;\n' + s.vertexShader.replace('#include <begin_vertex>', `#include <begin_vertex>
+      s.uniforms.uTime = windU; s.uniforms.uWind = windV; s.uniforms.uPlayer = playerU;
+      s.vertexShader = 'uniform float uTime; uniform vec3 uWind; uniform vec3 uPlayer;\n' + s.vertexShader.replace('#include <begin_vertex>', `#include <begin_vertex>
         #ifdef USE_INSTANCING
           vec4 wp0 = instanceMatrix * vec4(0.0, 0.0, 0.0, 1.0);
-          float bend = position.y * position.y;
-          transformed.x += (sin(uTime * 1.7 + wp0.x * 0.35 + wp0.z * 0.27) + 0.5 * sin(uTime * 3.1 + wp0.x * 0.9)) * 0.16 * bend;
-          transformed.z += cos(uTime * 1.3 + wp0.z * 0.4) * 0.08 * bend;
+          mat3 im3 = mat3(instanceMatrix); float sc2 = dot(im3[0], im3[0]);
+          float gust = 0.55 + 0.3 * sin(uTime * 1.3 + wp0.x * 0.07 + wp0.z * 0.05) + 0.25 * sin(uTime * 3.7 + wp0.x * 0.3);
+          vec2 bendW = uWind.xy * uWind.z * gust * 1.5;
+          vec2 aw = wp0.xz - uPlayer.xz;
+          bendW += normalize(aw + 1e-4) * (1.0 - smoothstep(0.4, 1.6, length(aw))) * 1.6 * step(uPlayer.y - wp0.y, 1.2); // pushed aside as you walk through
+          vec3 bl = (vec3(bendW.x, 0.0, bendW.y) * im3) / sc2; // world-space bend → this tuft's own space
+          float b2 = position.y * position.y;
+          transformed.xz += bl.xz * b2; transformed.y -= dot(bendW, bendW) * b2 * 0.18;
         #endif`);
       // light both faces of a blade the same (normals point straight up)
       s.fragmentShader = s.fragmentShader.replace('#include <normal_fragment_begin>', 'vec3 normal = normalize(vNormal); vec3 nonPerturbedNormal = normal;');
@@ -437,7 +458,7 @@ export function createWorld(scene) {
   };
 
   function makeChunk(cx, cz) {
-    const map = W.map, n = Math.round(map.grass.density * (COARSE ? 0.45 : 1));
+    const map = W.map, n = Math.round(map.grass.density * (COARSE ? 0.45 : 1) * grassScale);
     const rng = mulberry((cx * 73856093) ^ (cz * 19349663) ^ 77);
     const im = new THREE.InstancedMesh(grassGeo, grassMat, n);
     let k = 0;
@@ -498,12 +519,26 @@ export function createWorld(scene) {
     else { sun.color.copy(MOONC); sun.intensity = 0.55; }
     sky.position.copy(pp);
     windU.value = time;
+    const wa = time * 0.03 + 0.6, ws = (WIND_BASE[W.id] || 0.5) * (0.65 + 0.35 * Math.sin(time * 0.11) + 0.15 * Math.sin(time * 0.37));
+    windV.value.set(Math.cos(wa), Math.sin(wa), ws); W.wind = windV.value;
+    playerU.value.copy(pp);
     if (lavaMat) { const k = 1 + Math.sin(time * 1.3) * 0.18; lavaMat.color.setRGB(3.4 * k, 0.85 * k, 0.12); }
     gateDiscs.forEach((d, i) => { d.rotation.z = time * (i ? -1.1 : 1.1); d.scale.setScalar(1 + Math.sin(time * 2 + i) * 0.08); });
     streamGrass(pp);
   };
   const tmpV = new THREE.Vector3();
 
+  /** Quality hooks: shadow map size (0 = shadows off) and grass density (0..1). */
+  W.setShadow = (size) => {
+    sun.castShadow = size > 0;
+    if (size > 0 && sun.shadow.mapSize.x !== size) { sun.shadow.mapSize.set(size, size); if (sun.shadow.map) { sun.shadow.map.dispose(); sun.shadow.map = null; } }
+  };
+  W.setGrass = (k) => {
+    if (k === grassScale) return;
+    grassScale = k;
+    for (const [, ch] of chunks) { group.remove(ch.im); ch.im.dispose(); }
+    chunks.clear(); // chunks rebuild at the new density as they stream back in
+  };
   /** Push a circle out of nearby tree trunks and rock spires. */
   W.collide = (pos, r) => {
     const cx = Math.floor(pos.x / 8), cz = Math.floor(pos.z / 8);

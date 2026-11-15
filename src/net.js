@@ -12,6 +12,7 @@
 //                       sv                                a player's arrow or spell, shown to the others
 //                       pg                                ping
 import * as THREE from 'three';
+import { buildChibi } from './chibi.js';
 
 const PEER_URL = 'https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js';
 const CODE_AL = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789'; // no look-alike letters
@@ -334,52 +335,30 @@ export function createCoop(ctx) {
       const speed = Math.hypot(R.pos.x - ox, R.pos.z - oz) / Math.max(dt, 1e-3), sw = Math.min(1, speed / 5);
       R.phase += dt * (2 + speed * 1.5);
       av.g.position.copy(R.pos); av.g.rotation.y = R.f + Math.PI;
-      av.legs[0].rotation.x = Math.sin(R.phase) * 0.7 * sw; av.legs[1].rotation.x = -Math.sin(R.phase) * 0.7 * sw;
+      const sn = Math.sin(R.phase), cs = Math.cos(R.phase);
+      av.legs.forEach((l, i) => { const q = i ? -sn : sn; l.g.rotation.x = q * 0.6 * sw; l.kn.rotation.x = 0.1 + Math.max(0, i ? cs : -cs) * 1.0 * sw; l.ft.rotation.x = -(l.g.rotation.x + l.kn.rotation.x) * 0.7; });
       const hit = R.atkT > 0 ? Math.sin((1 - R.atkT / 0.4) * Math.PI) : 0;
       let ra = -Math.sin(R.phase) * 0.5 * sw, la = Math.sin(R.phase) * 0.5 * sw;
       if (R.b) { ra = -0.9; la = -0.5; }
       if (R.cls === 'archer' && (R.dr || R.atkT > 0)) { la = -1.5; ra = -1.3 + hit * 0.4; }
       else ra -= hit * 1.3;
       if (R.bl) la = -1.4;
-      av.arms[0].rotation.x = la; av.arms[1].rotation.x = ra;
-      av.body.position.y = Math.abs(Math.sin(R.phase)) * 0.05 * sw;
+      av.arms[0].g.rotation.set(la, 0, -0.14); av.arms[1].g.rotation.set(ra, 0, 0.14);
+      av.arms[0].el.rotation.x = R.bl ? -1.2 : la < -0.6 ? -0.5 : -0.25; av.arms[1].el.rotation.x = R.b ? -0.9 + hit * 0.6 : -0.3;
+      av.hips.position.y = av.hipY + Math.abs(cs) * 0.05 * av.unit * sw;
+      av.torso.rotation.set(0.06 * sw, sn * 0.07 * sw, 0); av.head.rotation.z = Math.sin(R.phase * 0.12) * 0.04;
       const hpPct = Math.round(R.hp / R.hm * 20);
       if (hpPct !== R.tagHp) { R.tagHp = hpPct; drawTag(av, R); }
     }
   }
 
   // ---------------------------------------------------------------- avatars
-  const BOX = new THREE.BoxGeometry(1, 1, 1), SPH = new THREE.SphereGeometry(0.5, 12, 10), CYL = new THREE.CylinderGeometry(0.5, 0.5, 1, 10);
   function buildAvatar(R) {
-    const g = new THREE.Group(), body = new THREE.Group(); g.add(body);
-    const M = (color, extra) => new THREE.MeshStandardMaterial({ color, roughness: 0.85, flatShading: true, ...extra });
-    const tunic = M(SLOT_COL[R.slot % 3]), skin = M(0xc8997a), dark = M(0x2a2420), leather = M(0x5a3d22), steel = M(0xb4c0cc, { metalness: 0.4, roughness: 0.4 });
-    const part = (parent, geo, mat, s, p, r) => { const m = new THREE.Mesh(geo, mat); m.scale.set(s[0], s[1], s[2]); m.position.set(p[0], p[1], p[2]); if (r) m.rotation.set(r[0], r[1], r[2]); m.castShadow = true; parent.add(m); return m; };
-    const limb = (x, y, s, mat, foot) => { const pv = new THREE.Group(); pv.position.set(x, y, 0); body.add(pv); part(pv, BOX, mat, s, [0, -s[1] / 2, 0]); if (foot) part(pv, BOX, foot, [s[0] * 1.05, 0.12, s[2] * 1.5], [0, -s[1] + 0.06, 0.05]); return pv; };
-    const legs = [limb(-0.13, 0.82, [0.17, 0.82, 0.19], dark, leather), limb(0.13, 0.82, [0.17, 0.82, 0.19], dark, leather)];
-    part(body, BOX, tunic, [0.52, 0.64, 0.3], [0, 1.14, 0]);
-    part(body, BOX, leather, [0.54, 0.08, 0.32], [0, 0.88, 0]);
-    part(body, BOX, tunic, [0.5, 0.2, 0.28], [0, 0.76, 0]);
-    part(body, SPH, skin, [0.34, 0.36, 0.34], [0, 1.66, 0]);
-    part(body, SPH, R.cls === 'mage' ? tunic : dark, [0.38, 0.3, 0.38], [0, 1.74, -0.03]); // hair / hood
-    if (R.cls === 'mage') part(body, new THREE.ConeGeometry(0.5, 1, 8), tunic, [0.5, 0.5, 0.5], [0, 2.02, -0.03]);
-    const arms = [limb(-0.33, 1.4, [0.14, 0.62, 0.15], tunic), limb(0.33, 1.4, [0.14, 0.62, 0.15], tunic)];
-    for (const a of arms) part(a, SPH, skin, [0.15, 0.15, 0.15], [0, -0.66, 0]);
-    if (R.cls === 'warrior') {
-      part(arms[1], BOX, steel, [0.06, 0.05, 0.9], [0, -0.66, 0.5]); part(arms[1], BOX, leather, [0.26, 0.05, 0.06], [0, -0.66, 0.06]);
-      part(arms[0], CYL, tunic, [0.62, 0.05, 0.62], [-0.1, -0.45, 0.02], [0, 0, Math.PI / 2]); part(arms[0], CYL, steel, [0.66, 0.03, 0.66], [-0.08, -0.45, 0.02], [0, 0, Math.PI / 2]);
-    } else if (R.cls === 'mage') {
-      part(arms[1], CYL, leather, [0.05, 1.7, 0.05], [0, -0.3, 0.08]);
-      part(arms[1], new THREE.OctahedronGeometry(0.5, 0), new THREE.MeshStandardMaterial({ color: 0, emissive: 0x7fb6ff, emissiveIntensity: 3 }), [0.14, 0.2, 0.14], [0, 0.62, 0.08]);
-    } else {
-      const bow = new THREE.Mesh(new THREE.TorusGeometry(0.55, 0.02, 6, 16, Math.PI), leather); bow.position.set(0, -0.66, 0.08); bow.rotation.set(0, Math.PI / 2, -Math.PI / 2); arms[0].add(bow);
-      part(body, BOX, leather, [0.14, 0.5, 0.12], [0.12, 1.2, -0.2], [0, 0, 0.3]); // quiver
-    }
+    const av = buildChibi(R.cls, SLOT_COL[R.slot % 3]);
     const cv = document.createElement('canvas'); cv.width = 256; cv.height = 72;
-    const tex = new THREE.CanvasTexture(cv);
-    const tag = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, depthWrite: false, fog: false, transparent: true }));
-    tag.scale.set(1.9, 0.53, 1); tag.position.y = 2.45; tag.renderOrder = 10; g.add(tag);
-    const av = { g, body, legs, arms, cv, tex };
+    av.cv = cv; av.tex = new THREE.CanvasTexture(cv);
+    const tag = new THREE.Sprite(new THREE.SpriteMaterial({ map: av.tex, depthWrite: false, fog: false, transparent: true }));
+    tag.scale.set(1.9, 0.53, 1); tag.position.y = av.height + 0.55; tag.renderOrder = 10; av.g.add(tag);
     drawTag(av, R);
     return av;
   }

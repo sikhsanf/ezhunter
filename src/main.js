@@ -46,9 +46,11 @@ try { music.muted = localStorage.getItem('ezhunter-music') === 'off'; } catch { 
 /** Browsers only allow sound after a tap, click or key press, so the title theme starts on the first one. */
 function wakeAudio() {
   sfx.init(); music.init(sfx.ctx);
-  if (sfx.ctx && sfx.ctx.state === 'suspended') sfx.ctx.resume();
+  if (sfx.ctx && sfx.ctx.state !== 'running') { const p = sfx.ctx.resume(); if (p && p.catch) p.catch(() => {}); }
 }
-for (const ev of ['pointerdown', 'keydown', 'touchstart']) addEventListener(ev, wakeAudio, { capture: true, passive: true });
+// On touch screens only the *release* of a tap (touchend / pointerup / click) counts as permission to play sound.
+for (const ev of ['pointerdown', 'pointerup', 'mousedown', 'keydown', 'touchstart', 'touchend', 'click']) addEventListener(ev, wakeAudio, { capture: true, passive: true });
+document.addEventListener('visibilitychange', () => { if (!document.hidden) wakeAudio(); });
 function toggleMusic() {
   music.setMuted(!music.muted);
   try { localStorage.setItem('ezhunter-music', music.muted ? 'off' : 'on'); } catch { /* */ }
@@ -413,6 +415,63 @@ function showRing(x, y, z, r, color) {
   ring.position.set(x, y + 0.25, z); ring.material.color.set(color).multiplyScalar(2.5); ringT = 0.5; ringR = r; ring.visible = true;
 }
 
+// ---------- water ripples: a small pool of expanding rings ----------
+const ripples = [0, 1, 2, 3, 4, 5, 6, 7].map(() => {
+  const m = new THREE.Mesh(new THREE.RingGeometry(0.9, 1, 28), new THREE.MeshBasicMaterial({ color: 0xdff2ff, transparent: true, opacity: 0, depthWrite: false }));
+  m.rotation.x = -Math.PI / 2; m.visible = false; m.renderOrder = 3; scene.add(m);
+  return { m, t: 0, str: 1 };
+});
+let ripI = 0, ripT = 0;
+function addRipple(x, z, str = 1) {
+  const r = ripples[ripI]; ripI = (ripI + 1) % ripples.length;
+  r.m.position.set(x, world.liquid.level + 0.03, z); r.t = 1; r.str = str; r.m.visible = true;
+}
+function updateRipples(dt) {
+  for (const r of ripples) {
+    if (r.t <= 0) continue;
+    r.t -= dt * 0.75;
+    const a = 1 - r.t;
+    r.m.scale.setScalar(0.3 + a * 2.6 * r.str); r.m.material.opacity = Math.max(0, r.t) * 0.55;
+    if (r.t <= 0) r.m.visible = false;
+  }
+  if (world.liquid.kind !== 'water') return;
+  ripT -= dt;
+  if (ripT > 0) return;
+  ripT = 0.28;
+  const p = player, lv = world.liquid.level;
+  if (p.inWater && p.onGround) { // wading
+    const sp = Math.hypot(p.vel.x, p.vel.z);
+    addRipple(p.pos.x + (Math.random() - 0.5) * 0.3, p.pos.z + (Math.random() - 0.5) * 0.3, sp > 0.5 ? Math.min(1.2, 0.4 + sp / 7) : 0.3);
+    if (sp > 5) { v2.set(p.pos.x, lv, p.pos.z); burst(v2, 0xcfe8ff, 5, 2.2, 0.4, 10); }
+  }
+  for (const m of monsters.list) { // creatures splashing through the shallows
+    if (m.dead || m.def.hover || m.dist > 45 || m.pos.y > lv - 0.05 || Math.random() < 0.5) continue;
+    addRipple(m.pos.x, m.pos.z, 0.5 + m.def.radius * 0.4);
+  }
+}
+// ---------- arrow arc: where the shot will fly while the bow is drawn ----------
+const TRAJ_N = 26, trajGeo = new THREE.BufferGeometry();
+trajGeo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(TRAJ_N * 3), 3));
+const trajLine = new THREE.Line(trajGeo, new THREE.LineDashedMaterial({ color: 0xffe9a8, dashSize: 0.5, gapSize: 0.45, transparent: true, opacity: 0.75, depthWrite: false }));
+trajLine.frustumCulled = false; trajLine.visible = false; scene.add(trajLine);
+const tv = new THREE.Vector3(), tp = new THREE.Vector3();
+function updateTrajectory() {
+  const p = player;
+  trajLine.visible = p.cls === 'archer' && p.drawing && p.drawT > 0.12;
+  if (!trajLine.visible) return;
+  const power = Math.max(0.3, Math.min(1, p.drawT / 0.75)), speed = 45 + 35 * power, a = trajGeo.attributes.position;
+  lookDir(tv);
+  tp.set(p.pos.x, p.pos.y + EYE - 0.12, p.pos.z).addScaledVector(tv, 0.9);
+  aimDir(tp, tv).multiplyScalar(speed);
+  let n = 0;
+  for (; n < TRAJ_N; n++) {
+    a.setXYZ(n, tp.x, tp.y, tp.z);
+    if (tp.y < heightAt(tp.x, tp.z)) { n++; break; }
+    tv.y -= 5 * 0.07; tp.addScaledVector(tv, 0.07); // same gravity the arrow gets
+  }
+  for (let i = n; i < TRAJ_N; i++) a.setXYZ(i, tp.x, tp.y, tp.z);
+  a.needsUpdate = true; trajLine.computeLineDistances();
+}
 const loot = [];
 const meatGeo = new THREE.BoxGeometry(0.34, 0.22, 0.26), essGeo = new THREE.OctahedronGeometry(0.16, 0);
 const meatMat = new THREE.MeshStandardMaterial({ color: 0xa8382c, roughness: 0.6, emissive: 0x4a0d08 });
@@ -1086,8 +1145,22 @@ function updatePlayer(dt) {
   p.dodgeCd -= dt;
   if (p.dodgeT > 0) { p.dodgeT -= dt; tx = p.dodgeX * 19; tz = p.dodgeZ * 19; }
   else { const sp = (sprint ? 10.5 : 6) * (p.chillT > 0 ? 0.6 : 1) * CLASSES[p.cls].speed * (p.battle ? 1 : 1.1) * (p.blocking ? 0.45 : 1) * (p.drawing ? 0.6 : 1); tx = mx * sp; tz = mz * sp; }
-  const k = Math.min(1, dt * (p.onGround ? 12 : 3));
+  // terrain physics: uphill is slower, downhill a touch faster, too steep and you slide; water drags at your legs
+  const gx = (heightAt(p.pos.x + 1, p.pos.z) - heightAt(p.pos.x - 1, p.pos.z)) / 2, gz = (heightAt(p.pos.x, p.pos.z + 1) - heightAt(p.pos.x, p.pos.z - 1)) / 2;
+  const slope = Math.hypot(gx, gz), tl = Math.hypot(tx, tz);
+  p.sliding = p.onGround && slope > 1.05 && p.dodgeT <= 0;
+  if (tl > 0.01 && slope > 0.01 && p.dodgeT <= 0) {
+    const up = (tx * gx + tz * gz) / tl; // > 0 means climbing
+    const f = up > 0 ? 1 / (1 + up * 1.3) : 1 + Math.min(0.22, -up * 0.3);
+    tx *= f; tz *= f;
+    if (p.sliding && up > 0) { const d = (tx * gx + tz * gz) / (slope * slope); tx -= gx * d; tz -= gz * d; }
+  }
+  const liq = world.liquid, depth = liq.kind === 'water' ? liq.level - heightAt(p.pos.x, p.pos.z) : 0;
+  p.inWater = depth > 0.05 && p.pos.y < liq.level + 0.2;
+  if (p.inWater) { const w = 1 - Math.min(0.42, depth * 0.7); tx *= w; tz *= w; }
+  const k = Math.min(1, dt * (p.sliding ? 2 : p.onGround ? 12 : 3));
   p.vel.x += (tx - p.vel.x) * k; p.vel.z += (tz - p.vel.z) * k;
+  if (p.sliding) { const g = (slope - 0.95) * 22 + 5; p.vel.x -= gx / slope * g * dt; p.vel.z -= gz / slope * g * dt; }
   p.pos.x += p.vel.x * dt; p.pos.z += p.vel.z * dt;
   const r = Math.hypot(p.pos.x, p.pos.z);
   if (r > WORLD_R - 6) { p.pos.x *= (WORLD_R - 6) / r; p.pos.z *= (WORLD_R - 6) / r; }
@@ -1102,7 +1175,13 @@ function updatePlayer(dt) {
   if (p.onGround) p.pos.y = ground;
   else {
     p.vel.y -= 24 * dt; p.pos.y += p.vel.y * dt;
-    if (p.pos.y <= ground) { p.pos.y = ground; p.vel.y = 0; p.onGround = true; sfx.step(); }
+    p.airT = (p.airT || 0) + dt;
+    if (p.pos.y <= ground) {
+      p.pos.y = ground; p.vel.y = 0; p.onGround = true; sfx.step();
+      if (p.airT > 0.25) p.land = Math.min(1, p.airT * 1.6); // knees absorb the landing
+      if (world.liquid.kind === 'water' && ground < world.liquid.level) { addRipple(p.pos.x, p.pos.z, 1.4); v2.set(p.pos.x, world.liquid.level, p.pos.z); burst(v2, 0xcfe8ff, 22, 4, 0.6, 12); }
+      p.airT = 0;
+    }
   }
   // vitals
   if (sprint) { p.stamina -= 15 * dt; p.staminaDelay = 0.7; }
@@ -1146,7 +1225,8 @@ function updatePlayer(dt) {
   // camera
   game.shake = Math.max(0, game.shake - dt * 1.6);
   const sh = game.shake * game.shake;
-  camera.position.set(p.pos.x + (Math.random() - 0.5) * sh * 0.5, p.pos.y + EYE + Math.sin(p.bob * 2) * 0.045 + (Math.random() - 0.5) * sh * 0.5, p.pos.z);
+  p.land = Math.max(0, (p.land || 0) - dt * 3.5);
+  camera.position.set(p.pos.x + (Math.random() - 0.5) * sh * 0.5, p.pos.y + EYE - Math.sin(p.land * Math.PI) * 0.16 + Math.sin(p.bob * 2) * 0.045 + (Math.random() - 0.5) * sh * 0.5, p.pos.z);
   camera.rotation.set(p.pitch + (Math.random() - 0.5) * sh * 0.06, p.yaw, (Math.random() - 0.5) * sh * 0.06 - (p.dodgeT > 0 ? 0.06 : 0));
   const fov = sprint ? 84 : 75;
   if (Math.abs(camera.fov - fov) > 0.1) { camera.fov += (fov - camera.fov) * Math.min(1, dt * 7); camera.updateProjectionMatrix(); }
@@ -1247,6 +1327,7 @@ function update(dt) {
   updatePlayer(dt);
   updateTarget(dt);
   coop.frame(dt);
+  updateRipples(dt); updateTrajectory();
   // "in battle" drives the music: locked on to something, or a hostile creature is coming for you
   let fight = !!game.lock;
   if (!fight) for (const m of monsters.list) {
@@ -1285,6 +1366,47 @@ function updateFx(dt) {
   }
 }
 
+// ---------------------------------------------------------------- graphics quality
+// Borrowed from Chibi World: measure the frame rate and step the expensive things down (or back up) to hold it.
+const QL = [
+  { pr: 1.5, bloom: true, sh: 2048, g: 1 },      // high
+  { pr: 1.15, bloom: true, sh: 1024, g: 0.75 },
+  { pr: 1, bloom: false, sh: 1024, g: 0.5 },     // mid: bloom is the single most expensive effect here
+  { pr: 0.8, bloom: false, sh: 512, g: 0.3 },
+  { pr: 0.65, bloom: false, sh: 0, g: 0.18 },    // low: no shadows
+];
+const QMODES = ['auto', 'high', 'mid', 'low'], QNAME = { auto: 'Auto', high: 'High', mid: 'Medium', low: 'Low' };
+const Q = { mode: 'auto', lvl: -1, acc: 0, n: 0, cool: 3, fast: 0, min: 0, bloom: true, fps: 0 };
+try { const m = localStorage.getItem('ezhunter-quality'); if (QMODES.includes(m)) Q.mode = m; } catch { /* storage unavailable */ }
+function applyQ(l) {
+  l = Math.max(0, Math.min(QL.length - 1, l));
+  if (l === Q.lvl) return;
+  Q.lvl = l;
+  const q = QL[l], pr = Math.min(devicePixelRatio, q.pr);
+  renderer.setPixelRatio(pr); composer.setPixelRatio(pr);
+  Q.bloom = q.bloom; world.setShadow(q.sh); world.setGrass(q.g);
+}
+function setQMode(m) {
+  Q.mode = m;
+  try { localStorage.setItem('ezhunter-quality', m); } catch { /* */ }
+  if (m === 'high') applyQ(0); else if (m === 'mid') applyQ(2); else if (m === 'low') applyQ(4);
+  else { Q.min = 0; Q.cool = 3; applyQ(touch.on || matchMedia('(pointer: coarse)').matches ? 2 : 1); }
+}
+function qTick(raw) {
+  if (document.hidden || raw > 0.25) { Q.acc = 0; Q.n = 0; return; } // a sleeping tab is not a slow device
+  Q.acc += raw; Q.n++;
+  if (Q.acc < 1.2) return;
+  const fps = Q.n / Q.acc; Q.acc = 0; Q.n = 0; Q.fps = fps;
+  $('qPill').textContent = `${QNAME[Q.mode]} · ${Math.round(fps)} fps`;
+  if (Q.mode !== 'auto') return;
+  Q.cool -= 1.2;
+  if (Q.cool > 0) return;
+  if (fps < 42 && Q.lvl < QL.length - 1) { if (Q.fast > 0 && Q.lvl >= Q.min) Q.min = Q.lvl + 1; applyQ(Q.lvl + 1); Q.cool = 2.4; Q.fast = 0; }
+  else if (fps > 56) { Q.fast += 1.2; if (Q.fast > 14 && Q.lvl > Q.min) { applyQ(Q.lvl - 1); Q.cool = 4; Q.fast = 0.01; } }
+  else Q.fast = 0;
+}
+$('qPill').addEventListener('click', () => setQMode(QMODES[(QMODES.indexOf(Q.mode) + 1) % QMODES.length]));
+
 // ---------------------------------------------------------------- loop
 const clock = new THREE.Clock();
 let menuAngle = 0, lastDayT = 0.07;
@@ -1294,7 +1416,9 @@ function frame() {
   if (game.state !== 'playing') music.play('title', 2, 2.5);
   else if (game.battleT > 0) music.play('battle', 0.5, 0.9);
   else music.play(game.mapId, 2.2, 2.6);
-  let dt = Math.min(0.05, clock.getDelta());
+  const rawDt = clock.getDelta();
+  qTick(rawDt);
+  let dt = Math.min(0.05, rawDt);
   if (game.state === 'menu') {
     menuAngle += dt * 0.05;
     camera.position.set(Math.sin(menuAngle) * 30, heightAt(0, 0) + 9, Math.cos(menuAngle) * 30);
@@ -1315,11 +1439,13 @@ function frame() {
     if (!game.paused) updateFx(dt);
     world.update(lastDayT, player.pos, clock.elapsedTime);
   }
-  composer.render();
+  if (Q.bloom) composer.render(); else renderer.render(scene, camera);
+  $('musicPill').classList.toggle('live', music.playing);
 }
 const coop = createCoop({ game, player, scene, monsters, MAPS, TYPES, CLASSES, heightAt, msg, localSlam, enemyShot, ghostShot });
 game.coop = coop;
-game.debug = { coop, toggleCoop, music, attack, cast, selectSpell, eat, dodge, travel, begin, setStance, atkPress, atkRelease, saveGame, readSave, input, bolts, rig: { sword, staff, bowArm, shieldArm, nock },
+setQMode(Q.mode);
+game.debug = { coop, toggleCoop, music, Q, applyQ, setQMode, world, scene, renderer, camera, composer, attack, cast, selectSpell, eat, dodge, travel, begin, setStance, atkPress, atkRelease, saveGame, readSave, input, bolts, rig: { sword, staff, bowArm, shieldArm, nock },
   /** Advance the simulation by n fixed frames (for automated checks). */
   step: (n = 60) => { for (let i = 0; i < n; i++) { lastDayT = update(1 / 60); updateFx(1 / 60); } updateHud(lastDayT); } };
 selectSpell(0);
