@@ -403,8 +403,8 @@ function updateViewmodel(dt, hs) {
   torchVM.visible = p.torch;
   if (p.torch) { // a lit torch: one warm, far-reaching light (reuses the hand light, so no extra lights to pay for)
     const fl = 1 + Math.sin(t * 13) * 0.07 + Math.sin(t * 29) * 0.05;
-    torchVM.position.set(-0.52, -0.42 - eatU * 0.5, -0.72); torchFlame.scale.set(1 / fl, fl, 1 / fl);
-    orbLight.color.set(0xffb060); orbLight.distance = 38; orbLight.intensity = 26 * fl * Math.min(1, p.torchFuel / 8);
+    torchVM.position.set(-0.52, -0.42 - eatU * 0.5, -0.72); torchFlame.scale.set(0.042 / fl, 0.2 * fl, 0.042 / fl); // flicker around its real (small) size
+    orbLight.color.set(0xffb060); orbLight.distance = 34; orbLight.intensity = 11 * fl * Math.min(1, p.torchFuel / 8);
   } else {
     orbLight.distance = 14; orbLight.color.set(c === 'mage' ? col : 0xffe2b8);
     orbLight.intensity = (game.isNight ? 2.2 : 0.8) * (c === 'mage' ? 1 : 0.6) * k + orbKick * 6;
@@ -1023,6 +1023,7 @@ const input = { atk: false, alt: false };
 addEventListener('keydown', (e) => {
   if (e.target && e.target.tagName === 'INPUT') { if (e.code === 'Escape') toggleCoop(false); return; }
   if (e.repeat) return;
+  if (game.wardrobe) { if (e.code === 'KeyE' || e.code === 'Escape') closeWardrobe(); return; }
   keys[e.code] = true;
   if (game.state !== 'playing' || game.paused) return;
   if (e.code === 'Digit1') selectSpell(0);
@@ -1036,7 +1037,7 @@ addEventListener('keydown', (e) => {
     if (game.lock) game.lock = null; // let go of the current target; attacking locks on again
     else { game.lockOff = !game.lockOff; msg(game.lockOff ? 'Lock-on camera off' : 'Lock-on camera on'); }
   }
-  else if (e.code === 'KeyE') cast();
+  else if (e.code === 'KeyE') { if (nearWardrobe()) openWardrobe(); else cast(); }
   else if (e.code === 'KeyP') saveGame();
   else if (e.code === 'KeyO') toggleCoop();
   else if (e.code === 'KeyM') toggleMusic();
@@ -1057,6 +1058,13 @@ function toggleBag(open = $('bagPanel').style.display !== 'flex') {
   else { game.paused = false; $('pause').style.display = 'none'; if (!touch.on && game.state === 'playing') lock(); }
 }
 $('bagPill').addEventListener('click', () => toggleBag());
+$('usePrompt').addEventListener('click', openWardrobe);
+$('wardClose').addEventListener('click', closeWardrobe);
+for (const [id, dir] of [['wardL', -1], ['wardR', 1]]) { // hold to turn the figure
+  const el = $(id);
+  el.addEventListener('pointerdown', (e) => { e.preventDefault(); game.wardTurn = dir; });
+  for (const ev of ['pointerup', 'pointerleave', 'pointercancel']) el.addEventListener(ev, () => { game.wardTurn = 0; });
+}
 $('torchPill').addEventListener('click', toggleTorch);
 $('bagClose').addEventListener('click', () => toggleBag(false));
 $('bagEat').addEventListener('click', () => { toggleBag(false); eat(); });
@@ -1302,6 +1310,7 @@ function updateHud(dayT) {
   setText('day', `${MAPS[game.mapId].name} · Day ${game.day} · ${part}`);
   $('hurt').style.opacity = Math.max(game.hurtFx, player.hunger <= 0 ? 0.35 : 0, player.hp < 30 ? 0.3 : 0);
   $('heal').style.opacity = game.healFx;
+  $('usePrompt').style.display = nearWardrobe() && !game.wardrobe ? 'block' : 'none';
   setText('stance', player.battle ? `${CLASSES[player.cls].name} · battle stance` : 'Normal stance · R to ready');
   $('stance').classList.toggle('on', player.battle);
   $('chill').style.opacity = player.chillT > 0 ? Math.min(1, player.chillT) * 0.8 : 0;
@@ -1473,13 +1482,38 @@ function updateLoot(dt) {
 }
 
 let homeAv = null;
-/** At the cabin your own character stands on the pedestal, so you can see what you look like. */
-function syncHomeAvatar() {
-  if (homeAv) { scene.remove(homeAv.g); homeAv.g.traverse((o) => { if (o.material) { if (o.material.map) o.material.map.dispose(); o.material.dispose(); } }); homeAv = null; }
-  if (!world.home || game.state !== 'playing') return;
+function dropHomeAv() {
+  if (!homeAv) return;
+  scene.remove(homeAv.g);
+  homeAv.g.traverse((o) => { if (o.material) { if (o.material.map) o.material.map.dispose(); o.material.dispose(); } if (o.geometry) o.geometry.dispose(); });
+  homeAv = null;
+}
+function syncHomeAvatar() { closeWardrobe(); }
+const nearWardrobe = () => !!world.home && game.state === 'playing' && Math.hypot(player.pos.x - world.home.wardrobe.x, player.pos.z - world.home.wardrobe.z) < 2.7;
+/** The wardrobe in the cabin: step back and look at your own hunter. Gear and colours will be chosen here later. */
+function openWardrobe() {
+  if (game.wardrobe || !nearWardrobe()) return;
   homeAv = buildChibi(player.cls, 0xe8c98a);
-  homeAv.g.position.copy(world.home.pedestal); scene.add(homeAv.g);
-  for (const a of homeAv.arms) a.g.rotation.z = a.s * 0.16;
+  homeAv.g.position.copy(world.home.stand); homeAv.g.rotation.y = Math.PI; // facing the doorway, and the camera
+  for (const a of homeAv.arms) a.g.rotation.z = a.s * 0.14;
+  scene.add(homeAv.g);
+  game.wardrobe = true; game.wardTurn = 0; game.panel = true;
+  $('wardCls').textContent = CLASSES[player.cls].name; $('wardPanel').style.display = 'block'; $('usePrompt').style.display = 'none';
+  if (document.pointerLockElement) document.exitPointerLock();
+  if (!coop.role) game.paused = true;
+}
+function closeWardrobe() {
+  if (!game.wardrobe) return;
+  game.wardrobe = false; game.panel = false; game.paused = false;
+  dropHomeAv(); $('wardPanel').style.display = 'none'; $('pause').style.display = 'none';
+  if (!touch.on && game.state === 'playing') lock();
+}
+function wardrobeView(dt) {
+  const st = world.home.stand;
+  vm.visible = false;
+  homeAv.g.rotation.y += dt * (0.45 + game.wardTurn * 2.6);
+  orbLight.color.set(0xfff0dc); orbLight.distance = 12; orbLight.intensity = 7; // a soft light on the figure, like standing at a mirror
+  camera.position.set(st.x + 0.5, st.y + 1.2, st.z - 2.6); camera.lookAt(st.x - 0.25, st.y + 0.95, st.z);
 }
 function goHome() {
   if (world.map.safe) { msg('You are already home'); return; }
@@ -1509,7 +1543,6 @@ function ambient(dt) {
   if (world.home) { // hearth smoke and campfire sparks
     if (Math.random() < dt * 14) burst(world.home.chimney, 0x55504a, 1, 0.4, 2.6, -1.3, 0.3);
     if (Math.random() < dt * 22) burst(world.home.fireAt, Math.random() < 0.3 ? 0xffd27a : 0xff6a18, 1, 0.7, 0.9, -3.5, 0.35);
-    if (homeAv) homeAv.g.rotation.y += dt * 0.6;
   }
   const kind = world.map.ambient, P = player.pos;
   ambAcc += dt * (kind === 'snow' ? 140 : kind === 'ember' ? 45 : game.isNight ? 22 : 0);
@@ -1646,6 +1679,7 @@ function frame() {
     if (!game.paused) updateFx(dt);
     world.update(lastDayT, player.pos, clock.elapsedTime);
   }
+  if (game.wardrobe && homeAv) wardrobeView(dt);
   if (Q.bloom) composer.render(); else renderer.render(scene, camera);
   $('musicPill').classList.toggle('live', music.playing);
 }
@@ -1654,7 +1688,7 @@ game.coop = coop;
 setQMode(Q.mode);
 // On tablets and phones, act on the touch itself instead of waiting for the browser's follow-up click:
 // that click never arrives if another finger is on the screen, which is what made these buttons feel dead.
-for (const id of ['coopPill', 'musicPill', 'qPill', 'bagPill', 'torchPill', 'deadHome', 'deadNew', 'coopHost', 'coopJoin', 'coopLeave', 'coopClose', 'bagClose', 'bagEat', 'bagSave', 'bagHome']) {
+for (const id of ['usePrompt', 'wardClose', 'coopPill', 'musicPill', 'qPill', 'bagPill', 'torchPill', 'deadHome', 'deadNew', 'coopHost', 'coopJoin', 'coopLeave', 'coopClose', 'bagClose', 'bagEat', 'bagSave', 'bagHome']) {
   const el = $(id);
   el.addEventListener('touchstart', (e) => { e.preventDefault(); e.stopPropagation(); el.click(); }, { passive: false });
 }
@@ -1662,11 +1696,11 @@ for (const id of ['coopPill', 'musicPill', 'qPill', 'bagPill', 'torchPill', 'dea
 function renderPortraits() {
   try {
     const r = new THREE.WebGLRenderer({ alpha: true, antialias: true, preserveDrawingBuffer: true });
-    r.setSize(240, 280); r.toneMapping = THREE.ACESFilmicToneMapping;
-    const sc = new THREE.Scene(), cam = new THREE.PerspectiveCamera(30, 240 / 280, 0.1, 20);
+    r.setSize(220, 340); r.toneMapping = THREE.ACESFilmicToneMapping;
+    const sc = new THREE.Scene(), cam = new THREE.PerspectiveCamera(30, 220 / 340, 0.1, 20);
     sc.add(new THREE.HemisphereLight(0xffffff, 0x665544, 1.7));
     const dl = new THREE.DirectionalLight(0xfff0dd, 2.6); dl.position.set(2, 4, 5); sc.add(dl);
-    cam.position.set(0.75, 1.0, 3.5); cam.lookAt(0.05, 0.86, 0);
+    cam.position.set(0.8, 1.1, 3.95); cam.lookAt(0.05, 0.98, 0);
     for (const cls of Object.keys(CLASSES)) {
       const av = buildChibi(cls, 0xe8c98a);
       av.g.rotation.y = 0.4; for (const a of av.arms) a.g.rotation.z = a.s * 0.2;
@@ -1678,7 +1712,7 @@ function renderPortraits() {
   } catch { /* the cards still work without pictures */ }
 }
 renderPortraits();
-game.debug = { goHome, toggleBag, eat, zones, coop, toggleCoop, music, Q, applyQ, setQMode, world, scene, renderer, camera, composer, attack, cast, selectSpell, eat, dodge, travel, begin, setStance, atkPress, atkRelease, saveGame, readSave, input, bolts, rig: { sword, staff, bowArm, shieldArm, nock },
+game.debug = { openWardrobe, closeWardrobe, nearWardrobe, goHome, toggleBag, eat, zones, coop, toggleCoop, music, Q, applyQ, setQMode, world, scene, renderer, camera, composer, attack, cast, selectSpell, eat, dodge, travel, begin, setStance, atkPress, atkRelease, saveGame, readSave, input, bolts, rig: { sword, staff, bowArm, shieldArm, nock },
   /** Advance the simulation by n fixed frames (for automated checks). */
   step: (n = 60) => { for (let i = 0; i < n; i++) { lastDayT = update(1 / 60); updateFx(1 / 60); } updateHud(lastDayT); } };
 selectSpell(0);

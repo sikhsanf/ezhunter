@@ -168,6 +168,17 @@
   #pills #musicPill { font-size: 14px; padding: 4px 11px; }
   #pills #torchPill.on { border-color: #ffb060; color: #ffd9a0; box-shadow: 0 0 12px rgba(255, 160, 70, .55); }
   #dead { cursor: default; }
+  #usePrompt { display: none; left: 50%; bottom: 170px; transform: translateX(-50%); padding: 10px 18px; font-size: 14px; letter-spacing: .14em; text-transform: uppercase;
+    pointer-events: auto; cursor: pointer; color: var(--gold); border-color: var(--gold); white-space: nowrap; }
+  #usePrompt small { opacity: .7; letter-spacing: 0; }
+  body.touch #usePrompt small { display: none; }
+  #wardPanel { display: none; position: fixed; right: 18px; top: 50%; transform: translateY(-50%); z-index: 4; width: min(280px, 42vw); text-align: center;
+    background: linear-gradient(180deg, rgba(26, 20, 15, .95), rgba(10, 8, 6, .95)); border: 1px solid rgba(232, 201, 138, .5); border-radius: 8px; padding: 18px 18px 12px; }
+  #wardPanel h3 { margin: 0 0 4px; font-weight: 400; letter-spacing: .3em; color: var(--gold); text-transform: uppercase; }
+  #wardCls { letter-spacing: .2em; text-transform: uppercase; font-size: 12px; opacity: .8; }
+  #wardPanel p { font-size: 13px; line-height: 1.5; opacity: .9; }
+  .wrow { display: flex; gap: 8px; justify-content: center; margin-bottom: 4px; }
+  .wrow .cbtn { touch-action: none; }
   #bagPanel { display: none; position: fixed; inset: 0; z-index: 4; align-items: center; justify-content: center; background: rgba(0, 0, 0, .6); padding: 16px; }
   #bagBox { width: min(380px, 100%); background: linear-gradient(180deg, rgba(26, 20, 15, .97), rgba(10, 8, 6, .97)); border: 1px solid rgba(232, 201, 138, .5); border-radius: 8px; padding: 20px 22px; text-align: center; }
   #bagBox h3 { margin: 0 0 10px; font-weight: 400; letter-spacing: .3em; color: var(--gold); text-transform: uppercase; }
@@ -177,7 +188,7 @@
   #bagBox #xp { margin: 0 0 6px; }
   .bar em { font-style: normal; color: var(--gold); min-width: 16px; text-align: right; font-size: 12px; }
   #bEat small { position: absolute; right: -2px; top: -4px; min-width: 20px; padding: 1px 4px; border-radius: 10px; background: #e08a35; color: #1a120a; font-size: 11px; }
-  .cimg { display: block; width: 120px; height: 140px; margin: -4px auto 4px; object-fit: contain; }
+  .cimg { display: block; width: 110px; height: 170px; margin: -4px auto 4px; object-fit: contain; }
   /* only the mage has spells */
   #spells, #bCast { display: none; }
   body[data-cls="mage"] #spells { display: flex; }
@@ -218,6 +229,7 @@
     <div id="bBlock" class="tbtn">Block</div>
   </div>
   <div id="cross"></div>
+  <div id="usePrompt" class="panel">Open wardrobe <small>[E]</small></div>
   <div id="pills">
     <div id="coopPill" class="panel">Co-op</div>
     <div id="bagPill" class="panel">Bag</div>
@@ -270,6 +282,13 @@
 </div>
 <div id="rotate">Rotate your device to landscape</div>
 <div id="fade"></div>
+<div id="wardPanel">
+  <h3>Wardrobe</h3>
+  <div id="wardCls"></div>
+  <p>This is how other hunters see you. Weapons, armour and colours will be chosen here soon.</p>
+  <div class="wrow"><button id="wardL" class="cbtn alt sm">&#9664; Turn</button><button id="wardR" class="cbtn alt sm">Turn &#9654;</button></div>
+  <button id="wardClose" class="cbtn">Close wardrobe</button>
+</div>
 <div id="bagPanel"><div id="bagBox">
   <h3>Bag</h3>
   <div class="brow"><span>Meat</span><em id="meat">0</em><button id="bagEat" class="cbtn sm">Eat</button></div>

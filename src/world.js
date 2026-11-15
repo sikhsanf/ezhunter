@@ -247,7 +247,7 @@ function label(text, w = 3.2) {
   s.scale.set(w, w * 96 / 512, 1);
   return s;
 }
-/** The hunter's log cabin with a campfire, a pedestal that shows your character, and a workbench for later gear crafting. */
+/** The hunter's log cabin: walk in through the doorway to find the wardrobe, mirror and bed. Outside: campfire and workbench. */
 function buildCabin(group, addOb, W) {
   const cz = 16, y = heightAt(0, cz);
   const g = new THREE.Group(); g.position.set(0, y, cz); group.add(g);
@@ -256,23 +256,23 @@ function buildCabin(group, addOb, W) {
   const warm = new THREE.MeshBasicMaterial({ color: 0xffffff }); warm.color.setRGB(2.4, 1.7, 0.8);
   const add = (geo, mat, x, yy, z, rx = 0, ry = 0, rz = 0) => { const m = new THREE.Mesh(geo, mat); m.position.set(x, yy, z); m.rotation.set(rx, ry, rz); m.castShadow = m.receiveShadow = true; g.add(m); return m; };
   const LW = 8, LD = 6, R = 0.3, front = -LD / 2;
-  add(new THREE.BoxGeometry(9.4, 0.3, 8.8), plank, 0, 0.15, -0.9);                                       // floor and porch
+  add(new THREE.BoxGeometry(9.4, 0.1, 8.8), plank, 0, 0.05, -0.9); // thin, so you step straight in                                       // floor and porch
   const lx = new THREE.CylinderGeometry(R, R, LW + 0.7, 8); lx.rotateZ(Math.PI / 2);
   const lz = new THREE.CylinderGeometry(R, R, LD + 0.7, 8); lz.rotateX(Math.PI / 2);
-  const hw = (LW - 1.6) / 2, half = new THREE.CylinderGeometry(R, R, hw + 0.3, 8); half.rotateZ(Math.PI / 2);
+  const DOOR = 2.4, hw = (LW - DOOR) / 2, half = new THREE.CylinderGeometry(R, R, hw + 0.3, 8); half.rotateZ(Math.PI / 2);
   for (let i = 0; i < 6; i++) {
-    const yy = 0.6 + i * 0.56, m = i % 2 ? log : logD;
+    const yy = 0.36 + i * 0.56, m = i % 2 ? log : logD;
     add(lx, m, 0, yy, LD / 2); add(lz, m, -LW / 2, yy + 0.28, 0); add(lz, m, LW / 2, yy + 0.28, 0);
-    if (i < 4) for (const s of [-1, 1]) add(half, m, s * (hw / 2 + 0.8), yy, front); else add(lx, m, 0, yy, front);  // doorway in the front wall
+    if (i < 4) for (const s of [-1, 1]) add(half, m, s * (hw / 2 + DOOR / 2), yy, front); else add(lx, m, 0, yy, front);  // doorway in the front wall
   }
   const sh = new THREE.Shape(); sh.moveTo(-LW / 2 - 0.9, 0); sh.lineTo(LW / 2 + 0.9, 0); sh.lineTo(0, 2.9); sh.closePath();
   const rg = new THREE.ExtrudeGeometry(sh, { depth: LD + 1.8, bevelEnabled: false }); rg.translate(0, 0, -(LD + 1.8) / 2);
-  add(rg, roof, 0, 3.95, 0);
-  add(new THREE.BoxGeometry(1.3, 2.3, 0.12), logD, 0.4, 1.45, front - 0.25, 0, 0.55, 0);                  // door, ajar
+  add(rg, roof, 0, 3.72, 0);
+  add(new THREE.BoxGeometry(1.2, 2.3, 0.1), logD, DOOR / 2 + 0.08, 1.2, front + 0.68, 0, Math.PI / 2, 0);   // door, swung open inside
   for (const s of [-1, 1]) add(new THREE.BoxGeometry(1.1, 0.9, 0.1), warm, s * 2.6, 2.0, front - 0.33);   // lit windows
   add(new THREE.BoxGeometry(1, 3.4, 1), stone, 2.6, 5.5, 1.2);                                            // chimney
   for (const s of [-1, 1]) add(new THREE.CylinderGeometry(0.14, 0.16, 3.1, 6), logD, s * 4.3, 1.85, front - 1.9);
-  add(new THREE.BoxGeometry(9.6, 0.16, 2.6), roof, 0, 3.5, front - 1.3, 0.2, 0, 0);                       // porch roof
+  add(new THREE.BoxGeometry(9.6, 0.16, 2.6), roof, 0, 3.3, front - 1.3, 0.2, 0, 0);                       // porch roof
   // campfire
   const at = (wx, wz) => [wx, heightAt(wx, wz) - y, wz - cz];
   const [fx, fy, fz] = at(0, 5.5);
@@ -281,10 +281,18 @@ function buildCabin(group, addOb, W) {
   const fm = new THREE.MeshBasicMaterial({ color: 0xffffff }); fm.color.setRGB(4, 1.7, 0.4);
   const flame = add(new THREE.ConeGeometry(0.42, 1.2, 7), fm, fx, fy + 0.75, fz); flame.castShadow = false;
   const fire = new THREE.PointLight(0xff9a4a, 46, 26, 1.8); fire.position.set(fx, fy + 1.4, fz); g.add(fire);
-  // pedestal for the character display
-  const [px, py, pz] = at(-7, 8);
-  add(new THREE.CylinderGeometry(1.15, 1.3, 0.4, 16), stone, px, py + 0.2, pz);
-  const l1 = label('Your hunter'); l1.position.set(px, py + 2.75, pz); g.add(l1);
+  // inside: wardrobe and mirror on the back wall, a bed, a rug
+  const wood2 = M(0x6a4526), cloth = M(0x8a2f2a), linen = M(0xe6dcc8), glass = M(0xbfd8e6, { metalness: 0.9, roughness: 0.12, flatShading: false });
+  const back = LD / 2;
+  add(new THREE.BoxGeometry(1.9, 2.5, 0.7), wood2, -2.3, 1.35, back - 0.75);                              // wardrobe
+  for (const sd of [-1, 1]) add(new THREE.BoxGeometry(0.9, 2.3, 0.07), log, -2.3 + sd * 1.15, 1.35, back - 1.4, 0, sd * 1.05, 0); // its doors, standing open
+  add(new THREE.BoxGeometry(2.1, 0.14, 0.85), logD, -2.3, 2.67, back - 0.75);
+  for (let i = 0; i < 3; i++) add(new THREE.BoxGeometry(0.34, 1.3, 0.1), [cloth, M(0x3b6fb0), M(0x4f7a45)][i], -2.8 + i * 0.5, 1.5, back - 0.9); // clothes hanging inside
+  add(new THREE.BoxGeometry(0.9, 1.9, 0.08), logD, -0.5, 1.15, back - 0.5); add(new THREE.BoxGeometry(0.74, 1.7, 0.02), glass, -0.5, 1.15, back - 0.56); // mirror
+  add(new THREE.BoxGeometry(1.5, 0.45, 2.6), wood2, 2.9, 0.33, 1.2); add(new THREE.BoxGeometry(1.4, 0.16, 2.4), linen, 2.9, 0.62, 1.2);      // bed
+  add(new THREE.BoxGeometry(1.1, 0.16, 0.5), linen, 2.9, 0.76, 2.15); add(new THREE.BoxGeometry(1.44, 0.1, 1.5), cloth, 2.9, 0.72, 0.7);
+  add(new THREE.BoxGeometry(2.6, 0.03, 1.8), cloth, 0, 0.12, 0.2);                                         // rug
+  const l1 = label('Wardrobe', 2.2); l1.position.set(-2.3, 3.0, back - 1.3); g.add(l1);
   // workbench
   const [bx, by, bz] = at(7, 8);
   add(new THREE.BoxGeometry(2.6, 0.16, 1.2), plank, bx, by + 1.0, bz);
@@ -292,8 +300,11 @@ function buildCabin(group, addOb, W) {
   add(new THREE.BoxGeometry(0.7, 0.3, 0.36), iron, bx - 0.5, by + 1.23, bz); add(new THREE.BoxGeometry(0.4, 0.18, 0.3), iron, bx - 0.5, by + 1.45, bz);
   add(new THREE.CylinderGeometry(0.03, 0.03, 0.7, 6), logD, bx + 0.6, by + 1.12, bz, 0, 0.4, Math.PI / 2); add(new THREE.BoxGeometry(0.22, 0.14, 0.14), iron, bx + 0.92, by + 1.12, bz - 0.13);
   const l2 = label('Workbench · gear crafting soon', 4.4); l2.position.set(bx, by + 2.2, bz); g.add(l2);
-  for (const [ox, oz, r] of [[0, cz, 4.4], [-2.7, cz, 3.6], [2.7, cz, 3.6], [-7, 8, 1.3], [7, 8, 1.5], [0, 5.5, 1.1]]) addOb(ox, oz, r);
-  W.home = { flame, fire, pedestal: new THREE.Vector3(-7, heightAt(-7, 8) + 0.4, 8), fireAt: new THREE.Vector3(0, heightAt(0, 5.5) + 0.6, 5.5), chimney: new THREE.Vector3(2.6, y + 7.4, cz + 1.2) };
+  // walls you cannot walk through, with the doorway left open
+  const wall = (x0, z0, x1, z1) => { const n = Math.ceil(Math.hypot(x1 - x0, z1 - z0) / 0.6); for (let i = 0; i <= n; i++) addOb(x0 + (x1 - x0) * i / n, cz + z0 + (z1 - z0) * i / n, 0.36); };
+  wall(-4, 3, 4, 3); wall(-4, -3, -4, 3); wall(4, -3, 4, 3); wall(-4, -3, -DOOR / 2 - 0.3, -3); wall(DOOR / 2 + 0.3, -3, 4, -3);
+  for (const [ox, oz, r] of [[-2.3, cz + 2.3, 0.95], [2.9, cz + 0.6, 0.9], [2.9, cz + 1.8, 0.9], [7, 8, 1.5], [0, 5.5, 1.1]]) addOb(ox, oz, r);
+  W.home = { flame, fire, wardrobe: new THREE.Vector3(-2.3, y, cz + 1.3), stand: new THREE.Vector3(-0.3, y + 0.1, cz + 0.5), fireAt: new THREE.Vector3(0, heightAt(0, 5.5) + 0.6, 5.5), chimney: new THREE.Vector3(2.6, y + 7.4, cz + 1.2) };
 }
 
 export function createWorld(scene) {
@@ -535,6 +546,7 @@ export function createWorld(scene) {
     for (let i = 0; i < n; i++) {
       const x = (cx + rng()) * CH, z = (cz + rng()) * CH, s = 0.7 + rng() * 0.9, rot = rng() * 6.283, v = rng();
       if (vnoise(x * 0.06 + 9, z * 0.06 + 3) < 0.26) continue; // bare patches
+      if (map.safe && Math.abs(x) < 5 && z > 10.4 && z < 19.6) continue; // no grass growing through the cabin floor
       const y = heightAt(x, z);
       if (y < map.liquid.level + 0.25 || y > map.rockLine + 1.5) continue;
       q.setFromEuler(eul.set(0, rot, 0));

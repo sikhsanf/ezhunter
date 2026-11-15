@@ -1,19 +1,20 @@
-// Chibi character builder (≈2.2 heads tall) with anime-style toon shading.
+// Character builder with anime-style toon shading. Default proportions are the realistic "new" ones (≈7 heads tall);
+// the chibi (≈2.2 heads) and middle (≈4 heads) proportions from the same reference are still available.
 // Adapted from the "Uji Proporsi Karakter" / "Chibi World" reference: lathe-turned torso, big head with a painted
 // face texture, capsule limbs with elbow and knee joints, boots, a hair cap with locks.
 // Left out on purpose, for frame rate: the inverted-hull outline on every part (doubles the draw calls),
 // per-strand hair ribbons, and cloth / hair physics.
 import * as THREE from 'three';
 
-/** 'chibi' ≈ 2.2 heads. The same builder also takes 'ro' (≈ 4 heads) or 'real' (≈ 7 heads). */
-export const AVATAR_KIND = 'chibi';
+/** 'real' ≈ 7 heads (the reference's "Opsi B"). The same builder also takes 'ro' (≈ 4 heads) or 'chibi' (≈ 2.2 heads). */
+export const AVATAR_KIND = 'real';
 const PROP = {
   chibi: { heads: 2.2, height: 1.5, neck: 0.05, torso: 0.62, legs: 0.55, arm: 0.62, headSq: [1.1, 1, 1.02],
     w: { shoulder: 0.44, chest: 0.4, waist: 0.36, hip: 0.38, depth: 0.75, neck: 0.12, arm: 0.1, fore: 0.09, hand: 0.11, leg: 0.14, shin: 0.11, foot: 0.42 } },
   ro: { heads: 4.1, height: 1.75, neck: 0.18, torso: 1.38, legs: 1.62, arm: 1.5, headSq: [0.92, 1, 0.95],
     w: { shoulder: 0.74, chest: 0.66, waist: 0.48, hip: 0.5, depth: 0.62, neck: 0.21, arm: 0.15, fore: 0.13, hand: 0.16, leg: 0.21, shin: 0.16, foot: 0.62 } },
-  real: { heads: 7.2, height: 1.8, neck: 0.1, torso: 2.4, legs: 3.35, arm: 3.05, headSq: [0.9, 1, 0.95],
-    w: { shoulder: 0.96, chest: 0.86, waist: 0.58, hip: 0.6, depth: 0.62, neck: 0.25, arm: 0.23, fore: 0.2, hand: 0.19, leg: 0.32, shin: 0.25, foot: 0.74 } },
+  real: { heads: 7.2, height: 1.84, neck: 0.1, torso: 2.4, legs: 3.35, arm: 3.05, headSq: [0.9, 1, 0.95],
+    w: { shoulder: 0.96, chest: 0.86, waist: 0.58, hip: 0.6, depth: 0.74, neck: 0.25, arm: 0.23, fore: 0.2, hand: 0.19, leg: 0.32, shin: 0.25, foot: 0.74 } },
 };
 const LOOKS = {
   warrior: { skin: '#e9b48e', shirt: '#8f9bb0', pants: '#4b4440', sleeve: '#c8ced8', belt: '#6a4630', boot: '#5a3d28', hair: '#7a5236', eye: '#4a2c1c' },
@@ -41,32 +42,49 @@ function toon(hex, map) {
   return m;
 }
 
-function faceTex(o) {
+function faceTex(o, chibi) {
   const W = 512, H = 256, c = document.createElement('canvas'); c.width = W; c.height = H;
   const x = c.getContext('2d'), K = 0.5; // the reference draws at 1024x512; K scales it down
   x.fillStyle = o.skin; x.fillRect(0, 0, W, H);
-  const cx = W * 0.25, ey = H * 0.6, sp = 72 * K, w = 44 * K, h = 58 * K;
+  const cx = W * 0.25, ey = H * (chibi ? 0.6 : 0.565), sp = (chibi ? 72 : 58) * K, w = (chibi ? 44 : 34) * K, h = (chibi ? 58 : 27) * K;
   const dark = '#' + new THREE.Color(o.skin).multiplyScalar(0.72).getHexString();
-  x.fillStyle = 'rgba(235,120,120,.28)';
-  for (const s of [-1, 1]) { x.beginPath(); x.ellipse(cx + s * (sp + 20 * K), ey + 44 * K, 26 * K, 12 * K, 0, 0, 6.283); x.fill(); }
+  x.fillStyle = 'rgba(235,120,120,.22)';
+  for (const s of [-1, 1]) { x.beginPath(); x.ellipse(cx + s * (sp + 20 * K), ey + (chibi ? 44 : 34) * K, (chibi ? 26 : 18) * K, (chibi ? 12 : 8) * K, 0, 0, 6.283); x.fill(); }
   for (const s of [-1, 1]) {
     const ex = cx + s * sp;
     x.fillStyle = '#f6f1ea'; x.beginPath(); x.ellipse(ex, ey, w, h, 0, 0, 6.283); x.fill();
     const ig = x.createLinearGradient(0, ey - h, 0, ey + h);
     ig.addColorStop(0, '#' + new THREE.Color(o.eye).multiplyScalar(0.5).getHexString()); ig.addColorStop(1, o.eye);
-    x.fillStyle = ig; x.beginPath(); x.ellipse(ex - s * 2 * K, ey + 4 * K, w * 0.78, h * 0.92, 0, 0, 6.283); x.fill();
-    x.fillStyle = '#1d1412'; x.beginPath(); x.ellipse(ex - s * 2 * K, ey + 6 * K, w * 0.3, h * 0.42, 0, 0, 6.283); x.fill();
-    x.fillStyle = '#fff'; x.beginPath(); x.ellipse(ex - s * 4 * K - 6 * K, ey - h * 0.35, 11 * K, 14 * K, 0, 0, 6.283); x.fill();
-    x.beginPath(); x.ellipse(ex + 8 * K, ey + h * 0.4, 5 * K, 6 * K, 0, 0, 6.283); x.fill();
-    x.strokeStyle = '#2a1a14'; x.lineCap = 'round'; x.lineWidth = 9 * K; x.beginPath(); x.ellipse(ex, ey + 6 * K, w * 1.04, h * 1.08, 0, Math.PI * 1.08, Math.PI * 1.92); x.stroke();
-    x.strokeStyle = o.hair; x.lineWidth = 7 * K; x.beginPath(); const by = ey - h - 26 * K;
+    x.fillStyle = ig; x.beginPath(); x.ellipse(ex - s * (chibi ? 2 : 3) * K, ey + (chibi ? 4 : 1) * K, w * (chibi ? 0.78 : 0.58), h * (chibi ? 0.92 : 1), 0, 0, 6.283); x.fill();
+    x.fillStyle = '#1d1412'; x.beginPath(); x.ellipse(ex - s * (chibi ? 2 : 3) * K, ey + (chibi ? 6 : 2) * K, w * 0.3, h * 0.42, 0, 0, 6.283); x.fill();
+    x.fillStyle = '#fff'; x.beginPath(); x.ellipse(ex - s * 4 * K - 6 * K, ey - h * 0.35, (chibi ? 11 : 5) * K, (chibi ? 14 : 5) * K, 0, 0, 6.283); x.fill();
+    if (chibi) { x.beginPath(); x.ellipse(ex + 8 * K, ey + h * 0.4, 5 * K, 6 * K, 0, 0, 6.283); x.fill(); }
+    x.strokeStyle = '#2a1a14'; x.lineCap = 'round'; x.lineWidth = (chibi ? 9 : 6) * K; x.beginPath(); x.ellipse(ex, ey + (chibi ? 6 : 3) * K, w * 1.04, h * 1.08, 0, Math.PI * 1.08, Math.PI * 1.92); x.stroke();
+    if (!chibi) { x.strokeStyle = dark; x.lineWidth = 3 * K; x.beginPath(); x.ellipse(ex, ey - 2 * K, w * 0.9, h * 1.05, 0, Math.PI * 0.2, Math.PI * 0.8); x.stroke(); } // lower lid
+    x.strokeStyle = o.hair; x.lineWidth = (chibi ? 7 : 9) * K; x.beginPath(); const by = ey - h - (chibi ? 26 : 20) * K;
     x.moveTo(ex - s * w * 0.9, by + 2 * K); x.quadraticCurveTo(ex, by - 4 * K, ex + s * w * 1.1, by - 2 * K); x.stroke();
   }
-  x.strokeStyle = dark; x.lineWidth = 4 * K; x.beginPath(); x.moveTo(cx + 4 * K, ey + 30 * K); x.quadraticCurveTo(cx + 10 * K, ey + 40 * K, cx + 2 * K, ey + 44 * K); x.stroke();
-  x.strokeStyle = '#9b4f46'; x.lineWidth = 6 * K; x.beginPath(); const my = ey + 66 * K;
-  x.moveTo(cx - 12 * K, my); x.quadraticCurveTo(cx, my + 8 * K, cx + 12 * K, my); x.stroke();
+  if (chibi) { x.strokeStyle = dark; x.lineWidth = 4 * K; x.beginPath(); x.moveTo(cx + 4 * K, ey + 30 * K); x.quadraticCurveTo(cx + 10 * K, ey + 40 * K, cx + 2 * K, ey + 44 * K); x.stroke(); }
+  x.strokeStyle = '#9b4f46'; x.lineWidth = (chibi ? 6 : 5) * K; x.beginPath(); const my = ey + (chibi ? 66 : 68) * K, mw = (chibi ? 12 : 14) * K;
+  x.moveTo(cx - mw, my); x.quadraticCurveTo(cx, my + (chibi ? 8 : 4) * K, cx + mw, my); x.stroke();
   const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 4;
   return t;
+}
+/** Head shape: a plain sphere for chibi; for the taller builds the reference narrows the jaw and flattens the back of the skull. */
+function headGeo(r, shaped) {
+  const g = new THREE.SphereGeometry(r, 32, 24);
+  if (!shaped) return g;
+  const p = g.attributes.position;
+  for (let i = 0; i < p.count; i++) {
+    let x = p.getX(i), y = p.getY(i), z = p.getZ(i);
+    const yn = y / r, t = Math.max(0, Math.min(1, -yn)), tt = t * t, s = Math.max(0, Math.min(1, (-yn - 0.3) / 0.7)), ss = s * s;
+    x *= 1 - 0.2 * ss; if (z > 0) z *= 1 - 0.03 * ss; else z *= 1 - 0.3 * tt; if (yn < 0) y *= 1 - 0.04 * tt;
+    if (yn < -0.55 && z > 0) { const cw = 1 - Math.min(1, Math.abs(x) / (r * 0.5)); z += r * 0.03 * ss * cw; }
+    if (yn < -0.5) { const back = 1 - Math.max(0, Math.min(1, (z / r + 0.1) / 0.6)); y = -0.5 * r + (y + 0.5 * r) * (1 - 0.5 * back); }
+    p.setXYZ(i, x, y, z);
+  }
+  g.computeVertexNormals();
+  return g;
 }
 
 /**
@@ -74,7 +92,7 @@ function faceTex(o) {
  * Faces +Z. Returns the joints needed to animate it.
  */
 export function buildChibi(cls, accent, kind = AVATAR_KIND) {
-  const P = PROP[kind], L = LOOKS[cls] || LOOKS.warrior, W = P.w, h = P.height / P.heads;
+  const P = PROP[kind], L = LOOKS[cls] || LOOKS.warrior, W = P.w, h = P.height / P.heads, chibi = kind === 'chibi';
   const mats = new Map();
   const M = (hex) => { if (!mats.has(hex)) mats.set(hex, toon(hex)); return mats.get(hex); };
   const part = (geo, hex, parent, pos, rot, scale) => {
@@ -102,16 +120,22 @@ export function buildChibi(cls, accent, kind = AVATAR_KIND) {
   const pg = lathe(pp); pg.scale(1, 1, W.depth); part(pg, L.pants, torso);
   const bg = new THREE.TorusGeometry(wa * 1.03, 0.04 * h, 6, 20); bg.rotateX(Math.PI / 2); bg.scale(1, 1, W.depth); part(bg, L.belt, torso, [0, 0.28 * torsoLen, 0]);
   part(new THREE.BoxGeometry(0.16 * h, 0.12 * h, 0.05 * h), '#d8b25a', torso, [0, 0.28 * torsoLen, wa * 1.03 * W.depth + 0.01]);
-  const scarf = new THREE.TorusGeometry(nr * 1.7, 0.07 * h, 8, 18); scarf.rotateX(Math.PI / 2); part(scarf, accent, torso, [0, torsoLen * 0.98, 0]);
-  part(new THREE.BoxGeometry(0.1 * h, 0.3 * h, 0.04 * h), accent, torso, [0.06 * h, torsoLen * 0.82, ch * W.depth + 0.03 * h], [0.15, 0, -0.2]);
+  const scarf = new THREE.TorusGeometry(nr * 1.7, nr * 0.55, 8, 18); scarf.rotateX(Math.PI / 2); part(scarf, accent, torso, [0, torsoLen * 0.98, 0]);
+  part(new THREE.BoxGeometry(nr * 0.9, torsoLen * 0.4, nr * 0.3), accent, torso, [nr * 0.5, torsoLen * 0.8, ch * W.depth + nr * 0.2], [0.15, 0, -0.2]);
 
   // neck + head
   const nk = new THREE.Group(); nk.position.y = torsoLen * 0.97; torso.add(nk);
-  const neckL = P.neck * h + 0.03 * h;
-  part(cyl(nr * 0.92, nr * 1.12, neckL + 0.3 * h), L.skin, nk, [0, neckL / 2, 0]);
-  const head = new THREE.Group(); head.position.set(0, neckL + h * 0.45, 0); nk.add(head);
+  const neckL = P.neck * h + (chibi ? 0.03 : 0.05) * h, nl = neckL + 0.34 * h;
+  part(cyl(nr * 0.92, nr * 1.12, nl), chibi ? L.skin : '#' + new THREE.Color(L.skin).multiplyScalar(0.82).getHexString(), nk, [0, nl / 2 - 0.14 * h, chibi ? -0.05 * h : -0.11 * h]);
+  const head = new THREE.Group(); head.position.set(0, neckL + h * (chibi ? 0.45 : 0.42), chibi ? 0 : 0.03 * h); nk.add(head);
   const r = h * 0.5, sq = P.headSq;
-  part(sph(r, 28, 20), toon('#ffffff', faceTex(L)), head, null, null, sq);
+  part(headGeo(r, !chibi), toon('#ffffff', faceTex(L, chibi)), head, null, null, sq);
+  if (!chibi) { // a small faceted nose
+    const v = [[0, 0.1, -0.02], [0, -0.03, 0.085], [-0.05, -0.065, 0], [0.05, -0.065, 0], [0, -0.07, 0.03]].map((q) => q.map((n) => n * r));
+    const pos = []; for (const tri of [[0, 2, 1], [0, 1, 3], [2, 4, 1], [1, 4, 3]]) for (const i of tri) pos.push(...v[i]);
+    const ng = new THREE.BufferGeometry(); ng.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); ng.computeVertexNormals();
+    const nose = part(ng, L.skin, head, [0, -0.3 * r, r * sq[2] * 0.89]); nose.castShadow = false;
+  }
   for (const s of [-1, 1]) part(sph(r * 0.16, 8, 6), L.skin, head, [s * r * sq[0] * 0.97, -r * 0.08, 0], null, [0.55, 1, 0.8]);
   // hair: a cap tilted back off the face, a fringe of locks, and locks down the back
   const hr = r * Math.max(sq[0], sq[2]);
@@ -130,7 +154,7 @@ export function buildChibi(cls, accent, kind = AVATAR_KIND) {
     const brim = new THREE.TorusGeometry(hr * 1.05, hr * 0.14, 6, 22); brim.rotateX(Math.PI / 2); part(brim, L.shirt, head, [0, hr * 0.66, -hr * 0.05], null, [1, 0.4, 1]);
     part(new THREE.TorusGeometry(hr * 0.72, hr * 0.06, 6, 18), accent, head, [0, hr * 0.8, -hr * 0.07], [Math.PI / 2 - 0.25, 0, 0]);
   } else if (cls === 'warrior') {
-    for (const s of [-1, 1]) part(sph(0.2 * h, 12, 8), '#aab8c8', torso, [s * sh * 0.86, torsoLen * 0.9, 0], null, [1.15, 0.8, 1.2]); // pauldrons
+    for (const s of [-1, 1]) part(sph(sh * 0.33, 12, 8), '#aab8c8', torso, [s * sh * 0.86, torsoLen * 0.9, 0], null, [1.15, 0.8, 1.2]); // pauldrons
   }
 
   const arms = [-1, 1].map((s) => {
@@ -158,7 +182,7 @@ export function buildChibi(cls, accent, kind = AVATAR_KIND) {
   });
 
   // class gear in the hands
-  const R = arms[1].hand, Lh = arms[0].hand, u = h;
+  const R = arms[1].hand, Lh = arms[0].hand, u = 0.64; // gear is sized in world units, whatever the body proportions
   if (cls === 'warrior') {
     part(cyl(0.035 * u, 0.04 * u, 2.7 * u, 8), '#6b4a2c', R, [0, 0.55 * u, 0.1 * u]);                 // spear shaft
     part(new THREE.ConeGeometry(0.12 * u, 0.46 * u, 4), '#dfe6ee', R, [0, 2.12 * u, 0.1 * u]);
