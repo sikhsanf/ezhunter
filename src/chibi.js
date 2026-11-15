@@ -160,8 +160,9 @@ export function buildChibi(cls, accent, kind = AVATAR_KIND) {
   // class gear in the hands
   const R = arms[1].hand, Lh = arms[0].hand, u = h;
   if (cls === 'warrior') {
-    part(new THREE.BoxGeometry(0.07 * u, 0.06 * u, 1.3 * u), '#dfe6ee', R, [0, -0.12 * u, 0.75 * u]);
-    part(new THREE.BoxGeometry(0.42 * u, 0.07 * u, 0.08 * u), '#d8b25a', R, [0, -0.12 * u, 0.1 * u]);
+    part(cyl(0.035 * u, 0.04 * u, 2.7 * u, 8), '#6b4a2c', R, [0, 0.55 * u, 0.1 * u]);                 // spear shaft
+    part(new THREE.ConeGeometry(0.12 * u, 0.46 * u, 4), '#dfe6ee', R, [0, 2.12 * u, 0.1 * u]);
+    part(cyl(0.065 * u, 0.05 * u, 0.1 * u, 8), '#d8b25a', R, [0, 1.87 * u, 0.1 * u]);
     const sg = cyl(0.5 * u, 0.5 * u, 0.07 * u, 18); sg.rotateZ(Math.PI / 2); part(sg, '#2f4f7a', Lh, [-0.14 * u, -0.1 * u, 0.02]);
     const rg = new THREE.TorusGeometry(0.5 * u, 0.04 * u, 6, 20); rg.rotateY(Math.PI / 2); part(rg, '#d8b25a', Lh, [-0.14 * u, -0.1 * u, 0.02]);
   } else if (cls === 'mage') {

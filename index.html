@@ -162,6 +162,37 @@
   }
   #dead h1 { color: #d8452e; }
   #stats { font-size: 17px; line-height: 1.9; margin-bottom: 26px; }
+  /* ---------- round 2: pills row, bag, class pictures, touch layout without overlaps ---------- */
+  #pills { position: absolute; left: 22px; top: 16px; display: flex; flex-wrap: wrap; gap: 6px; max-width: 300px; }
+  #pills .panel { position: static; padding: 6px 11px; font-size: 12px; letter-spacing: .12em; text-transform: uppercase; pointer-events: auto; cursor: pointer; color: var(--gold); }
+  #pills #musicPill { font-size: 14px; padding: 4px 11px; }
+  #pills #torchPill.on { border-color: #ffb060; color: #ffd9a0; box-shadow: 0 0 12px rgba(255, 160, 70, .55); }
+  #dead { cursor: default; }
+  #bagPanel { display: none; position: fixed; inset: 0; z-index: 4; align-items: center; justify-content: center; background: rgba(0, 0, 0, .6); padding: 16px; }
+  #bagBox { width: min(380px, 100%); background: linear-gradient(180deg, rgba(26, 20, 15, .97), rgba(10, 8, 6, .97)); border: 1px solid rgba(232, 201, 138, .5); border-radius: 8px; padding: 20px 22px; text-align: center; }
+  #bagBox h3 { margin: 0 0 10px; font-weight: 400; letter-spacing: .3em; color: var(--gold); text-transform: uppercase; }
+  .brow { display: flex; align-items: center; gap: 10px; padding: 7px 2px; border-bottom: 1px solid rgba(232, 201, 138, .15); font-size: 15px; text-align: left; }
+  .brow span { flex: 1; } .brow em { font-style: normal; color: var(--gold); min-width: 30px; text-align: right; }
+  .cbtn.sm { width: auto; margin: 0; padding: 6px 14px; font-size: 12px; }
+  #bagBox #xp { margin: 0 0 6px; }
+  .bar em { font-style: normal; color: var(--gold); min-width: 16px; text-align: right; font-size: 12px; }
+  #bEat small { position: absolute; right: -2px; top: -4px; min-width: 20px; padding: 1px 4px; border-radius: 10px; background: #e08a35; color: #1a120a; font-size: 11px; }
+  .cimg { display: block; width: 120px; height: 140px; margin: -4px auto 4px; object-fit: contain; }
+  /* only the mage has spells */
+  #spells, #bCast { display: none; }
+  body[data-cls="mage"] #spells { display: flex; }
+  body.touch[data-cls="mage"] #bCast { display: flex; }
+  /* touch: action buttons fanned around Attack, none touching */
+  #bCast, #bBlock { right: 126px; bottom: 20px; width: 68px; height: 68px; }
+  #bDodge { right: 112px; bottom: 110px; width: 62px; height: 62px; }
+  #bJump { right: 26px; bottom: 134px; width: 62px; height: 62px; }
+  #bStance { right: 206px; bottom: 26px; width: 58px; height: 58px; }
+  #bEat { right: 184px; bottom: 112px; width: 56px; height: 56px; }
+  body.touch #pills { left: 10px; top: 92px; max-width: 230px; gap: 5px; }
+  body.touch #pills .panel { font-size: 10px; padding: 6px 9px; }
+  body.touch #minimap { top: 10px; right: 10px; }
+  body.touch #stance { bottom: 8px; }
+  body.touch[data-cls="mage"] #stance { bottom: 62px; }
 </style>
 <script type="importmap">
 { "imports": {
@@ -182,15 +213,18 @@
     <div id="bCast" class="tbtn">Cast</div>
     <div id="bJump" class="tbtn">Jump</div>
     <div id="bDodge" class="tbtn">Dodge</div>
-    <div id="bEat" class="tbtn">Eat</div>
+    <div id="bEat" class="tbtn">Eat<small id="eatN">0</small></div>
     <div id="bStance" class="tbtn">Stance</div>
     <div id="bBlock" class="tbtn">Block</div>
-    <div id="bSave" class="tbtn">Save</div>
   </div>
   <div id="cross"></div>
-  <div id="coopPill" class="panel">Co-op</div>
-  <div id="musicPill" class="panel" title="Music on / off (M)">&#9835;</div>
-  <div id="qPill" class="panel" title="Graphics quality: click to change">Auto</div>
+  <div id="pills">
+    <div id="coopPill" class="panel">Co-op</div>
+    <div id="bagPill" class="panel">Bag</div>
+    <div id="torchPill" class="panel" title="Torch (L): limited burn time">Torch</div>
+    <div id="musicPill" class="panel" title="Music on / off (M)">&#9835;</div>
+    <div id="qPill" class="panel" title="Graphics quality: tap to change">Auto</div>
+  </div>
   <div id="target" class="panel"><span id="tname"></span><div class="track"><div id="thp" class="fill"></div></div></div>
   <div id="stance">Normal stance</div>
   <div id="day" class="panel">Day 1</div>
@@ -199,18 +233,12 @@
     <div class="bar"><span>Health</span><div class="track"><div id="hp" class="fill"></div></div></div>
     <div class="bar"><span>Stamina</span><div class="track"><div id="st" class="fill"></div></div></div>
     <div class="bar"><span>Mana</span><div class="track"><div id="mp" class="fill"></div></div></div>
-    <div class="bar"><span>Hunger</span><div class="track"><div id="hg" class="fill"></div></div></div>
+    <div class="bar"><span>Hunger</span><div class="track"><div id="hg" class="fill"></div></div><em id="meatHud" title="Meat in your bag">0</em></div>
   </div>
   <div id="spells" class="panel">
     <div class="spell on" id="s0"><b>1</b>Firebolt<br><i>18 mana</i></div>
     <div class="spell" id="s1"><b>2</b>Frost Nova<br><i>35 mana</i></div>
     <div class="spell" id="s2"><b>3</b>Mend<br><i>40 mana</i></div>
-  </div>
-  <div id="inv" class="panel">
-    <div>Meat <small>[F to eat]</small><em id="meat">0</em></div>
-    <div>Kills<em id="kills">0</em></div>
-    <div>Hunter rank<em id="lvl">1</em></div>
-    <div id="xp"><div id="xpf"></div></div>
   </div>
 </div>
 
@@ -218,22 +246,23 @@
   <h1>ASHEN WILDS</h1>
   <h2>Hunt or starve</h2>
   <div class="lore">Your hunger never stops. Bring down beasts with blade and spell, eat what you kill, and survive as many days as you can.
-    You start at camp in the Verdant Vale. Glowing waygates lead to the Frostfang Tundra and the Cinder Wastes — each with its own beasts. In battle stance a target node marks the creature you are facing, and the camera locks onto whatever you attack; in normal stance your gear is put away and you travel lighter.</div>
+    You start at your cabin, where you are safe. Glowing waygates lead to the Verdant Vale, the Frostfang Tundra and the Cinder Wastes — each with its own beasts. In battle stance a target node marks the creature you are facing, and the camera locks onto whatever you attack; in normal stance your gear is put away and you travel lighter.</div>
   <div id="continue" class="go"></div>
   <div id="classes">
-    <div class="card" data-cls="warrior"><b>Warrior</b><i>Sword &amp; shield</i><span>Tough. Three-hit sword combo; raise the shield to block.</span></div>
-    <div class="card" data-cls="mage"><b>Mage</b><i>Staff &amp; spells</i><span>Fragile. Homing staff bolts, strong spells, fast mana.</span></div>
-    <div class="card" data-cls="archer"><b>Archer</b><i>Longbow</i><span>Quick. Hold to draw, release to loose; longest reach.</span></div>
+    <div class="card" data-cls="warrior"><img id="img-warrior" class="cimg" alt="Warrior with spear and shield"><b>Warrior</b><i>Spear &amp; shield</i><span>Tough. Long-reach spear thrusts; raise the shield to block.</span></div>
+    <div class="card" data-cls="mage"><img id="img-mage" class="cimg" alt="Mage with staff"><b>Mage</b><i>Staff &amp; spells</i><span>Fragile. Staff bolts plus fire, frost and healing spells.</span></div>
+    <div class="card" data-cls="archer"><img id="img-archer" class="cimg" alt="Archer with bow"><b>Archer</b><i>Longbow</i><span>Quick. Hold to draw, release to loose; longest reach.</span></div>
   </div>
   <div class="keys">
     <b>W A S D / Mouse</b><span>Move / look</span>
     <b>R</b><span>Battle stance &harr; normal stance (weapons away)</span>
     <b>Tab &middot; T</b><span>Switch locked target &middot; release / toggle lock-on camera</span>
     <b>Left click</b><span>Attack &mdash; hold: combo, staff fire, or draw the bow</span>
-    <b>Right click</b><span>Warrior: block &middot; Mage / Archer: use skill</span>
-    <b>E &middot; 1 2 3 / Wheel</b><span>Use skill &middot; select skill</span>
+    <b>Right click</b><span>Warrior: block &middot; Mage: cast spell</span>
+    <b>E &middot; 1 2 3 / Wheel</b><span>Mage: cast &middot; choose spell</span>
     <b>Shift / Space / Q</b><span>Sprint / jump / dodge</span>
-    <b>F &middot; P</b><span>Eat meat &middot; save (also autosaves)</span>
+    <b>F &middot; B &middot; H</b><span>Eat meat &middot; open bag &middot; return to your cabin</span>
+    <b>L &middot; P</b><span>Torch (limited burn time) &middot; save (also autosaves)</span>
     <b>O &middot; M</b><span>Co-op room (up to 3 hunters) &middot; music on / off</span>
   </div>
   <div class="touchhint">Left thumb moves (push to the edge to sprint) &middot; right thumb looks<br>Stance readies your weapon &middot; hold Attack to chain, fire or draw &middot; tap a skill, then Cast</div>
@@ -241,6 +270,17 @@
 </div>
 <div id="rotate">Rotate your device to landscape</div>
 <div id="fade"></div>
+<div id="bagPanel"><div id="bagBox">
+  <h3>Bag</h3>
+  <div class="brow"><span>Meat</span><em id="meat">0</em><button id="bagEat" class="cbtn sm">Eat</button></div>
+  <div class="brow"><span>Beasts slain</span><em id="kills">0</em></div>
+  <div class="brow"><span>Hunter rank</span><em id="lvl">1</em></div>
+  <div id="xp"><div id="xpf"></div></div>
+  <div class="brow"><span>Class</span><em id="bagCls"></em></div>
+  <button id="bagSave" class="cbtn alt">Save progress</button>
+  <button id="bagHome" class="cbtn alt">Return to your cabin</button>
+  <button id="bagClose" class="cbtn alt">Back to the hunt</button>
+</div></div>
 <div id="coopPanel"><div id="coopBox">
   <h3>Co-op hunt</h3>
   <div id="coopStatus"></div>
@@ -260,7 +300,9 @@
   <button id="coopClose" class="cbtn alt">Back to the hunt</button>
 </div></div>
 <div id="pause" class="overlay"><h1>PAUSED</h1><div class="go">Click to resume</div></div>
-<div id="dead" class="overlay"><h1>YOU FELL</h1><h2 id="cause"></h2><div id="stats"></div><div class="go">Click to hunt again</div></div>
+<div id="dead" class="overlay"><h1>YOU FELL</h1><h2 id="cause"></h2><div id="stats"></div>
+  <button id="deadHome" class="cbtn" style="max-width:320px">Back to your cabin</button>
+  <button id="deadNew" class="cbtn alt" style="max-width:320px">Start a new hunter</button></div>
 
 <script type="module" src="./src/main.js"></script>
 <script>

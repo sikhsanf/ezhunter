@@ -10,6 +10,15 @@ const COARSE = typeof matchMedia !== 'undefined' && matchMedia('(pointer: coarse
 
 /** Each map is its own hunting ground with its own look, hazards and monster roster (see monsters.js). */
 export const MAPS = {
+  home: {
+    name: "Hunter's Rest", sub: 'Your cabin · safe ground, no beasts, no hunger', gate: 0xffe9a8, seed: 411.3, amp: 3, safe: true,
+    liquid: { kind: 'none', level: -99, bed: 0 },
+    ground: [0x3a6a2c, 0x7fa84a], dirt: 0x6a5438, rock: 0x77736a, rockLine: 99, shore: 0x6a5438,
+    sky: { zen: 0x2f6fd0, hor: 0xbcd9ee, nzen: 0x04060f, nhor: 0x101c36, dusk: 0xf0a060, cloud: 0xffffff, cover: 0.42 },
+    fog: [0.007, 0.011], hemiGround: 0x3a3524,
+    grass: { density: 520, base: 0x3f7d2c, tip: 0xa6cf58, h: 0.42 },
+    flora: [['oak', 170], ['pine', 230], ['bush', 220]], rocks: 0x86837b, ambient: 'firefly',
+  },
   vale: {
     name: 'Verdant Vale', sub: 'Old forest · gentle prey, familiar predators', gate: 0x5cff8f, seed: 0, amp: 13,
     liquid: { kind: 'water', level: -5.5, bed: 0.55 },
@@ -228,7 +237,64 @@ void main(){
   gl_FragColor = vec4(col, 1.0);
 }`;
 
-export const GATES = [[48, -34], [-48, -34]];
+export const GATES = [[48, -34], [-48, -34], [0, -58]];
+
+function label(text, w = 3.2) {
+  const c = document.createElement('canvas'); c.width = 512; c.height = 96;
+  const x = c.getContext('2d'); x.font = '600 40px Georgia'; x.textAlign = 'center'; x.textBaseline = 'middle';
+  x.lineWidth = 8; x.strokeStyle = 'rgba(0,0,0,.85)'; x.strokeText(text, 256, 48); x.fillStyle = '#f1e8d8'; x.fillText(text, 256, 48);
+  const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: new THREE.CanvasTexture(c), depthWrite: false, fog: false, transparent: true }));
+  s.scale.set(w, w * 96 / 512, 1);
+  return s;
+}
+/** The hunter's log cabin with a campfire, a pedestal that shows your character, and a workbench for later gear crafting. */
+function buildCabin(group, addOb, W) {
+  const cz = 16, y = heightAt(0, cz);
+  const g = new THREE.Group(); g.position.set(0, y, cz); group.add(g);
+  const M = (c, o) => new THREE.MeshStandardMaterial({ color: c, roughness: 0.9, flatShading: true, ...o });
+  const log = M(0x7a5232), logD = M(0x5e3e26), plank = M(0x9a7448), roof = M(0x7a2f24), stone = M(0x8a867e), iron = M(0x3a3a40, { metalness: 0.4 });
+  const warm = new THREE.MeshBasicMaterial({ color: 0xffffff }); warm.color.setRGB(2.4, 1.7, 0.8);
+  const add = (geo, mat, x, yy, z, rx = 0, ry = 0, rz = 0) => { const m = new THREE.Mesh(geo, mat); m.position.set(x, yy, z); m.rotation.set(rx, ry, rz); m.castShadow = m.receiveShadow = true; g.add(m); return m; };
+  const LW = 8, LD = 6, R = 0.3, front = -LD / 2;
+  add(new THREE.BoxGeometry(9.4, 0.3, 8.8), plank, 0, 0.15, -0.9);                                       // floor and porch
+  const lx = new THREE.CylinderGeometry(R, R, LW + 0.7, 8); lx.rotateZ(Math.PI / 2);
+  const lz = new THREE.CylinderGeometry(R, R, LD + 0.7, 8); lz.rotateX(Math.PI / 2);
+  const hw = (LW - 1.6) / 2, half = new THREE.CylinderGeometry(R, R, hw + 0.3, 8); half.rotateZ(Math.PI / 2);
+  for (let i = 0; i < 6; i++) {
+    const yy = 0.6 + i * 0.56, m = i % 2 ? log : logD;
+    add(lx, m, 0, yy, LD / 2); add(lz, m, -LW / 2, yy + 0.28, 0); add(lz, m, LW / 2, yy + 0.28, 0);
+    if (i < 4) for (const s of [-1, 1]) add(half, m, s * (hw / 2 + 0.8), yy, front); else add(lx, m, 0, yy, front);  // doorway in the front wall
+  }
+  const sh = new THREE.Shape(); sh.moveTo(-LW / 2 - 0.9, 0); sh.lineTo(LW / 2 + 0.9, 0); sh.lineTo(0, 2.9); sh.closePath();
+  const rg = new THREE.ExtrudeGeometry(sh, { depth: LD + 1.8, bevelEnabled: false }); rg.translate(0, 0, -(LD + 1.8) / 2);
+  add(rg, roof, 0, 3.95, 0);
+  add(new THREE.BoxGeometry(1.3, 2.3, 0.12), logD, 0.4, 1.45, front - 0.25, 0, 0.55, 0);                  // door, ajar
+  for (const s of [-1, 1]) add(new THREE.BoxGeometry(1.1, 0.9, 0.1), warm, s * 2.6, 2.0, front - 0.33);   // lit windows
+  add(new THREE.BoxGeometry(1, 3.4, 1), stone, 2.6, 5.5, 1.2);                                            // chimney
+  for (const s of [-1, 1]) add(new THREE.CylinderGeometry(0.14, 0.16, 3.1, 6), logD, s * 4.3, 1.85, front - 1.9);
+  add(new THREE.BoxGeometry(9.6, 0.16, 2.6), roof, 0, 3.5, front - 1.3, 0.2, 0, 0);                       // porch roof
+  // campfire
+  const at = (wx, wz) => [wx, heightAt(wx, wz) - y, wz - cz];
+  const [fx, fy, fz] = at(0, 5.5);
+  for (let i = 0; i < 8; i++) { const a = i / 8 * 6.283; add(new THREE.DodecahedronGeometry(0.26, 0), stone, fx + Math.cos(a) * 0.9, fy + 0.12, fz + Math.sin(a) * 0.9); }
+  for (let i = 0; i < 3; i++) add(new THREE.CylinderGeometry(0.1, 0.1, 1.3, 6), logD, fx, fy + 0.2, fz, 0.2, i * 2.09, 1.35);
+  const fm = new THREE.MeshBasicMaterial({ color: 0xffffff }); fm.color.setRGB(4, 1.7, 0.4);
+  const flame = add(new THREE.ConeGeometry(0.42, 1.2, 7), fm, fx, fy + 0.75, fz); flame.castShadow = false;
+  const fire = new THREE.PointLight(0xff9a4a, 46, 26, 1.8); fire.position.set(fx, fy + 1.4, fz); g.add(fire);
+  // pedestal for the character display
+  const [px, py, pz] = at(-7, 8);
+  add(new THREE.CylinderGeometry(1.15, 1.3, 0.4, 16), stone, px, py + 0.2, pz);
+  const l1 = label('Your hunter'); l1.position.set(px, py + 2.75, pz); g.add(l1);
+  // workbench
+  const [bx, by, bz] = at(7, 8);
+  add(new THREE.BoxGeometry(2.6, 0.16, 1.2), plank, bx, by + 1.0, bz);
+  for (const [dx, dz] of [[-1.1, -0.45], [1.1, -0.45], [-1.1, 0.45], [1.1, 0.45]]) add(new THREE.BoxGeometry(0.14, 1, 0.14), logD, bx + dx, by + 0.5, bz + dz);
+  add(new THREE.BoxGeometry(0.7, 0.3, 0.36), iron, bx - 0.5, by + 1.23, bz); add(new THREE.BoxGeometry(0.4, 0.18, 0.3), iron, bx - 0.5, by + 1.45, bz);
+  add(new THREE.CylinderGeometry(0.03, 0.03, 0.7, 6), logD, bx + 0.6, by + 1.12, bz, 0, 0.4, Math.PI / 2); add(new THREE.BoxGeometry(0.22, 0.14, 0.14), iron, bx + 0.92, by + 1.12, bz - 0.13);
+  const l2 = label('Workbench · gear crafting soon', 4.4); l2.position.set(bx, by + 2.2, bz); g.add(l2);
+  for (const [ox, oz, r] of [[0, cz, 4.4], [-2.7, cz, 3.6], [2.7, cz, 3.6], [-7, 8, 1.3], [7, 8, 1.5], [0, 5.5, 1.1]]) addOb(ox, oz, r);
+  W.home = { flame, fire, pedestal: new THREE.Vector3(-7, heightAt(-7, 8) + 0.4, 8), fireAt: new THREE.Vector3(0, heightAt(0, 5.5) + 0.6, 5.5), chimney: new THREE.Vector3(2.6, y + 7.4, cz + 1.2) };
+}
 
 export function createWorld(scene) {
   // ---------- persistent sky & light ----------
@@ -254,7 +320,7 @@ export function createWorld(scene) {
   const windU = { value: 0 };
   const windV = { value: new THREE.Vector3(1, 0, 0.4) };  // xy = direction, z = strength
   const playerU = { value: new THREE.Vector3() };         // grass parts around the hunter
-  const WIND_BASE = { vale: 0.5, tundra: 0.95, wastes: 0.65 };
+  const WIND_BASE = { home: 0.32, vale: 0.5, tundra: 0.95, wastes: 0.65 };
   let grassScale = 1;
 
   const W = { map: null, id: null, gates: [], liquid: null };
@@ -273,7 +339,7 @@ export function createWorld(scene) {
       if (o.material && !seen.has(o.material)) { seen.add(o.material); o.material.dispose(); }
       if (o.isInstancedMesh) o.dispose();
     });
-    chunks.clear(); grid = new Map(); gateDiscs = []; lavaMat = null;
+    chunks.clear(); grid = new Map(); gateDiscs = []; lavaMat = null; W.home = null;
   }
 
   W.load = (id) => {
@@ -313,7 +379,7 @@ export function createWorld(scene) {
     ground.receiveShadow = true;
     group.add(ground);
 
-    if (L.kind !== 'ice') {
+    if (L.kind === 'water' || L.kind === 'lava') {
       const mat = L.kind === 'water'
         ? new THREE.MeshStandardMaterial({ color: 0x2f7f9f, transparent: true, opacity: 0.74, roughness: 0.45, metalness: 0.1 })
         : (lavaMat = new THREE.MeshBasicMaterial({ color: 0xffffff }));
@@ -325,7 +391,9 @@ export function createWorld(scene) {
     // ---------- waygates to the other maps ----------
     W.gates = [];
     const stone = new THREE.MeshStandardMaterial({ color: id === 'wastes' ? 0x3a3432 : 0x7c7a74, roughness: 0.95, flatShading: true });
-    Object.keys(MAPS).filter((k) => k !== id).forEach((to, gi) => {
+    // the cabin has a gate to every hunting ground; each hunting ground links to the others and back home
+    const wild = Object.keys(MAPS).filter((k) => !MAPS[k].safe);
+    (map.safe ? wild : wild.filter((k) => k !== id).concat('home')).forEach((to, gi) => {
       const [gx, gz] = GATES[gi], gy = heightAt(gx, gz);
       const g = new THREE.Group(); g.position.set(gx, gy, gz); g.rotation.y = Math.atan2(-gx, -gz);
       const col = new THREE.Color(MAPS[to].gate);
@@ -351,6 +419,8 @@ export function createWorld(scene) {
       W.gates.push({ x: gx, z: gz, y: gy, to, name: MAPS[to].name });
     });
     const nearGate = (x, z) => GATES.some(([gx, gz]) => Math.hypot(x - gx, z - gz) < 7);
+    const addOb = (x, z, r) => { const key = Math.floor(x / 8) * 4096 + Math.floor(z / 8); if (!grid.has(key)) grid.set(key, []); grid.get(key).push({ x, z, r }); };
+    if (map.safe) buildCabin(group, addOb, W);
 
     // ---------- trees and other flora ----------
     const stdMat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.9, flatShading: true });
@@ -370,7 +440,7 @@ export function createWorld(scene) {
       const info = FLORA_INFO[kind], list = [];
       for (let a = 0; a < count * 7 && list.length < count; a++) {
         const x = (rng() - 0.5) * 850, z = (rng() - 0.5) * 850;
-        if (Math.hypot(x, z) < 14 || nearGate(x, z)) continue;
+        if (Math.hypot(x, z) < (map.safe ? 27 : 14) || nearGate(x, z)) continue;
         if (info.forest && vnoise(x * 0.012 + 50, z * 0.012 + 50) < 0.45 + rng() * 0.13) continue;
         const y = heightAt(x, z);
         if (y > map.rockLine + 2 || y < L.level + 0.5) continue;
@@ -519,6 +589,7 @@ export function createWorld(scene) {
     else { sun.color.copy(MOONC); sun.intensity = 0.55; }
     sky.position.copy(pp);
     windU.value = time;
+    if (W.home) { const fl = 1 + Math.sin(time * 11) * 0.12 + Math.sin(time * 23) * 0.08; W.home.flame.scale.set(1 / fl, fl, 1 / fl); W.home.fire.intensity = 40 * fl; }
     const wa = time * 0.03 + 0.6, ws = (WIND_BASE[W.id] || 0.5) * (0.65 + 0.35 * Math.sin(time * 0.11) + 0.15 * Math.sin(time * 0.37));
     windV.value.set(Math.cos(wa), Math.sin(wa), ws); W.wind = windV.value;
     playerU.value.copy(pp);

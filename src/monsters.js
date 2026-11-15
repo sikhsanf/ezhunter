@@ -10,22 +10,22 @@ import { heightAt, WORLD_R } from './world.js';
 const T = (o) => o;
 export const TYPES = {
   // ---------------- Verdant Vale ----------------
-  grazer: T({ name: 'Mossback', look: 'grazer', temper: 'passive', hp: 45, speed: 2.2, flee: 8.6, fleeDist: 9, radius: 1.0, height: 1.8, meat: 2, essence: 4, mass: 0.3 }),
-  hare: T({ name: 'Glimmerhare', look: 'hare', temper: 'passive', hp: 14, speed: 3, flee: 11.5, fleeDist: 13, radius: 0.5, height: 0.8, meat: 1, essence: 10, mass: 0 }),
+  grazer: T({ name: 'Mossback', look: 'grazer', temper: 'passive', hp: 45, speed: 2.2, flee: 6.4, fleeDist: 9, radius: 1.0, height: 1.8, meat: 2, essence: 4, mass: 0.3 }),
+  hare: T({ name: 'Glimmerhare', look: 'hare', temper: 'passive', hp: 14, speed: 3, flee: 8.0, fleeDist: 13, radius: 0.5, height: 0.8, meat: 1, essence: 10, mass: 0 }),
   stonehorn: T({ name: 'Stonehorn', look: 'stonehorn', temper: 'neutral', hp: 120, speed: 1.8, chase: 7.5, aggro: 30, range: 9, windup: 0.75, recover: 1.5, attack: 'charge', dmg: 20, radius: 1.5, height: 2.4, meat: 3, essence: 16, mass: 0.8 }),
   duskfang: T({ name: 'Duskfang', look: 'duskfang', temper: 'aggressive', hp: 42, speed: 2.6, chase: 8.6, aggro: 28, range: 3.4, windup: 0.42, recover: 0.75, attack: 'bite', dmg: 10, radius: 0.8, height: 1.4, meat: 1, essence: 8, mass: 0.2, pack: 2 }),
   brute: T({ name: 'Thornback Brute', look: 'brute', temper: 'aggressive', hp: 260, speed: 1.6, chase: 5.4, aggro: 34, range: 4.6, windup: 0.95, recover: 1.4, attack: 'slam', dmg: 32, radius: 2.1, height: 3.6, meat: 4, essence: 45, mass: 1 }),
   wisp: T({ name: 'Ember Wisp', look: 'wisp', temper: 'aggressive', hp: 30, speed: 2.5, chase: 5.5, aggro: 36, range: 26, windup: 0.6, recover: 0.5, attack: 'bolt', dmg: 12, radius: 0.7, height: 3.2, meat: 0, essence: 18, mass: 0, hover: 2.4, nightOnly: true, bolt: 0xff5a18 }),
   // ---------------- Frostfang Tundra ----------------
-  woolhorn: T({ name: 'Woolhorn', look: 'woolhorn', temper: 'passive', hp: 95, speed: 1.8, flee: 7.4, fleeDist: 8, radius: 1.5, height: 2.6, meat: 4, essence: 8, mass: 0.6 }),
-  snowskip: T({ name: 'Snowskip', look: 'snowskip', temper: 'passive', hp: 18, speed: 3, flee: 12, fleeDist: 14, radius: 0.5, height: 0.8, meat: 1, essence: 14, mass: 0 }),
+  woolhorn: T({ name: 'Woolhorn', look: 'woolhorn', temper: 'passive', hp: 95, speed: 1.8, flee: 5.8, fleeDist: 8, radius: 1.5, height: 2.6, meat: 4, essence: 8, mass: 0.6 }),
+  snowskip: T({ name: 'Snowskip', look: 'snowskip', temper: 'passive', hp: 18, speed: 3, flee: 8.2, fleeDist: 14, radius: 0.5, height: 0.8, meat: 1, essence: 14, mass: 0 }),
   glaciertusk: T({ name: 'Glacier Tusk', look: 'glaciertusk', temper: 'neutral', hp: 200, speed: 1.6, chase: 7.8, aggro: 30, range: 10, windup: 0.8, recover: 1.5, attack: 'charge', dmg: 27, radius: 1.7, height: 2.7, meat: 4, essence: 26, mass: 0.9 }),
   icemaw: T({ name: 'Icemaw', look: 'icemaw', temper: 'aggressive', hp: 62, speed: 2.6, chase: 8.9, aggro: 30, range: 3.5, windup: 0.4, recover: 0.7, attack: 'bite', dmg: 13, radius: 0.85, height: 1.5, meat: 1, essence: 13, mass: 0.2, pack: 2, effect: 'chill' }),
   frostwraith: T({ name: 'Frost Wraith', look: 'frostwraith', temper: 'aggressive', hp: 46, speed: 2.5, chase: 5.8, aggro: 38, range: 28, windup: 0.6, recover: 0.5, attack: 'bolt', dmg: 14, radius: 0.75, height: 3.2, meat: 0, essence: 24, mass: 0, hover: 2.6, bolt: 0x5ac8ff, effect: 'chill' }),
   hoarbrute: T({ name: 'Hoarfrost Brute', look: 'hoarbrute', temper: 'aggressive', hp: 350, speed: 1.6, chase: 5.6, aggro: 34, range: 4.8, windup: 0.9, recover: 1.3, attack: 'slam', dmg: 38, radius: 2.2, height: 3.8, meat: 5, essence: 60, mass: 1, effect: 'chill' }),
   // ---------------- Cinder Wastes ----------------
-  ashskitter: T({ name: 'Ashskitter', look: 'ashskitter', temper: 'passive', hp: 55, speed: 2.6, flee: 9.4, fleeDist: 10, radius: 1.0, height: 1.0, meat: 2, essence: 8, mass: 0.3 }),
-  emberling: T({ name: 'Emberling', look: 'emberling', temper: 'passive', hp: 22, speed: 3.2, flee: 12.5, fleeDist: 14, radius: 0.5, height: 0.8, meat: 1, essence: 20, mass: 0 }),
+  ashskitter: T({ name: 'Ashskitter', look: 'ashskitter', temper: 'passive', hp: 55, speed: 2.6, flee: 7.0, fleeDist: 10, radius: 1.0, height: 1.0, meat: 2, essence: 8, mass: 0.3 }),
+  emberling: T({ name: 'Emberling', look: 'emberling', temper: 'passive', hp: 22, speed: 3.2, flee: 8.6, fleeDist: 14, radius: 0.5, height: 0.8, meat: 1, essence: 20, mass: 0 }),
   slagshell: T({ name: 'Slagshell', look: 'slagshell', temper: 'neutral', hp: 280, speed: 1.3, chase: 7, aggro: 28, range: 10, windup: 0.9, recover: 1.7, attack: 'charge', dmg: 33, radius: 1.9, height: 2.3, meat: 5, essence: 36, mass: 1 }),
   cinderhound: T({ name: 'Cinderhound', look: 'cinderhound', temper: 'aggressive', hp: 82, speed: 2.8, chase: 9.3, aggro: 32, range: 3.6, windup: 0.38, recover: 0.65, attack: 'bite', dmg: 16, radius: 0.9, height: 1.5, meat: 1, essence: 18, mass: 0.25, pack: 2, effect: 'burn' }),
   emberwisp: T({ name: 'Cinder Wisp', look: 'emberwisp', temper: 'aggressive', hp: 48, speed: 2.6, chase: 6, aggro: 38, range: 28, windup: 0.55, recover: 0.45, attack: 'bolt', dmg: 16, radius: 0.75, height: 3.2, meat: 0, essence: 26, mass: 0, hover: 2.5, bolt: 0xff3a10, effect: 'burn' }),
@@ -35,12 +35,14 @@ export const TYPES = {
 const min = Math.min, fl = Math.floor;
 /** How many of each monster should be alive near the player, per map. */
 export const SPAWNS = {
+  home: () => ({}), // the cabin is safe ground
   vale: (d, n) => ({ grazer: 6, hare: 4, stonehorn: 2, duskfang: min(10, (n ? 4 : 2) + fl((d - 1) * 1.5)), brute: min(3, d - 1 + (n ? 1 : 0)), wisp: n ? min(6, 2 + d) : 0 }),
   tundra: (d, n) => ({ woolhorn: 4, snowskip: 4, glaciertusk: 2, icemaw: min(10, (n ? 5 : 3) + d - 1), frostwraith: min(6, (n ? 3 : 1) + fl(d / 2)), hoarbrute: min(3, 1 + fl((d - 1) / 2) + (n ? 1 : 0)) }),
   wastes: (d, n) => ({ ashskitter: 5, emberling: 3, slagshell: 2, cinderhound: min(12, (n ? 6 : 4) + d - 1), emberwisp: min(7, (n ? 4 : 2) + fl(d / 2)), magmaw: min(4, 1 + fl(d / 2) + (n ? 1 : 0)) }),
 };
 /** What is already wandering nearby when you arrive: [type, minDist, maxDist, count]. */
 export const SEEDS = {
+  home: [],
   vale: [['grazer', 22, 34, 2], ['grazer', 35, 60, 2], ['hare', 18, 40, 1], ['hare', 30, 60, 2], ['stonehorn', 40, 70, 1], ['duskfang', 70, 95, 2]],
   tundra: [['woolhorn', 24, 40, 2], ['snowskip', 20, 45, 2], ['glaciertusk', 40, 70, 1], ['icemaw', 65, 90, 2], ['frostwraith', 75, 100, 1]],
   wastes: [['ashskitter', 22, 40, 2], ['emberling', 22, 45, 2], ['slagshell', 40, 65, 1], ['cinderhound', 60, 85, 2], ['emberwisp', 70, 95, 1]],

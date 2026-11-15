@@ -150,7 +150,9 @@ for (const k in TUNES) compile(TUNES[k]);
 
 // ------------------------------------------------------------------ the band
 export class Music {
-  constructor() { this.cur = null; this.want = null; this.vol = 0.7; this.muted = false; }
+  constructor() { this.cur = null; this.want = null; this.vol = 0.5; this.muted = false;
+    // "lite" band for phones and tablets: fewer oscillators per note and a shorter reverb, so the audio thread keeps up
+    this.lite = typeof matchMedia !== 'undefined' && matchMedia('(pointer: coarse)').matches; }
 
   init(ctx) {
     if (this.ctx || !ctx) return;
@@ -159,7 +161,7 @@ export class Music {
     const comp = ctx.createDynamicsCompressor(); comp.threshold.value = -14; comp.ratio.value = 4; comp.attack.value = 0.01; comp.release.value = 0.25;
     this.out.connect(comp); comp.connect(ctx.destination);
     // hall reverb from a generated impulse: decaying noise, darker towards the tail
-    const len = Math.floor(ctx.sampleRate * 3), ir = ctx.createBuffer(2, len, ctx.sampleRate);
+    const len = Math.floor(ctx.sampleRate * (this.lite ? 1.3 : 3)), ir = ctx.createBuffer(2, len, ctx.sampleRate);
     for (let ch = 0; ch < 2; ch++) {
       const d = ir.getChannelData(ch); let lp = 0;
       for (let i = 0; i < len; i++) {
@@ -202,7 +204,7 @@ export class Music {
     if (!tr || ctx.state !== 'running' || document.hidden) { if (tr) tr.next = Math.max(tr.next, ctx.currentTime + 0.1); return; }
     if (tr.next < ctx.currentTime) tr.next = ctx.currentTime + 0.05; // fell behind (tab was asleep): skip, don't burst
     const tune = tr.tune;
-    while (tr.next < ctx.currentTime + 0.3) {
+    while (tr.next < ctx.currentTime + (this.lite ? 0.8 : 0.45)) { // schedule further ahead so a slow frame cannot make notes late
       const s = tr.step, inBar = s % tune.spb, ch = tune.chords[s];
       tune.arr({ t: tr.next, s, inBar, bar: Math.floor(s / tune.spb), chord: ch.c, sec: ch.sec, note: tune.notes.get(s), sd: tune.step, loop: tr.loop, I: tr.I, N: tune.N });
       tr.next += tune.step * (tune.swing ? tune.swing[inBar % tune.swing.length] : 1);
@@ -212,7 +214,7 @@ export class Music {
 
   /** The instruments, bound to one tune's output so a cross-fade carries everything it is playing. */
   band(tr) {
-    const ctx = this.ctx, noise = this.noise;
+    const ctx = this.ctx, noise = this.noise, lite = this.lite;
     const osc = (type, f, t, stop, detune = 0) => { const o = ctx.createOscillator(); o.type = type; o.frequency.setValueAtTime(f, t); o.detune.value = detune; o.start(t); o.stop(stop); return o; };
     const out = (node, rev) => { node.connect(tr.dry); if (rev) { const s = ctx.createGain(); s.gain.value = rev; node.connect(s); s.connect(tr.rin); } };
     const env = (t, a, hold, r, peak) => { const g = ctx.createGain(); g.gain.setValueAtTime(0.0001, t); g.gain.linearRampToValueAtTime(peak, t + a); g.gain.setValueAtTime(peak, t + Math.max(a, hold)); g.gain.exponentialRampToValueAtTime(0.0001, t + Math.max(a, hold) + r); return g; };
@@ -222,7 +224,7 @@ export class Music {
       /** Plucked harp: bright attack, long ring. */
       harp(t, f, vel) {
         vel *= 1.9;
-        const end = t + 2.2, g = ctx.createGain();
+        const end = t + (lite ? 1.1 : 2.2), g = ctx.createGain();
         g.gain.setValueAtTime(0.0001, t); g.gain.linearRampToValueAtTime(vel, t + 0.006); g.gain.exponentialRampToValueAtTime(vel * 0.35, t + 0.18); g.gain.exponentialRampToValueAtTime(0.0001, end);
         const a = osc('triangle', f, t, end), b = osc('sine', f * 2, t, end, 3), c = osc('sine', f * 3, t, end), gb = ctx.createGain(), gc = ctx.createGain();
         gb.gain.value = 0.32; gc.gain.setValueAtTime(0.16, t); gc.gain.exponentialRampToValueAtTime(0.001, t + 0.35);
@@ -236,22 +238,24 @@ export class Music {
         const a = osc('sine', f, t, end), b = osc('sine', f * 2, t, end), c = osc('triangle', f * 3, t, end), gb = ctx.createGain(), gc = ctx.createGain();
         gb.gain.value = 0.2; gc.gain.value = 0.05;
         if (cut) for (const [o, m] of [[a, 1], [b, 2], [c, 3]]) { o.frequency.setValueAtTime(cut * m, t); o.frequency.setValueAtTime(f * m, t + 0.04); }
-        if (dur > 0.3) vib(a, t, f, 5.2, 0.006, 0.15, end);
+        if (!lite && dur > 0.3) vib(a, t, f, 5.2, 0.006, 0.15, end);
         a.connect(g); b.connect(gb); gb.connect(g); c.connect(gc); gc.connect(g);
-        const n = nsrc(t, dur + 0.1), bp = ctx.createBiquadFilter(), gn = ctx.createGain();
-        bp.type = 'bandpass'; bp.frequency.value = f * 2; bp.Q.value = 1.5; gn.gain.value = 0.35;
-        n.connect(bp); bp.connect(gn); gn.connect(g);
+        if (!lite) { // breath noise
+          const n = nsrc(t, dur + 0.1), bp = ctx.createBiquadFilter(), gn = ctx.createGain();
+          bp.type = 'bandpass'; bp.frequency.value = f * 2; bp.Q.value = 1.5; gn.gain.value = 0.35;
+          n.connect(bp); bp.connect(gn); gn.connect(g);
+        }
         out(g, rev);
       },
       /** Fiddle: two slightly detuned saws through a body filter, with vibrato. */
       fiddle(t, f, dur, vel) {
         vel *= 2.0;
         const end = t + dur + 0.16, g = env(t, 0.05, dur, 0.14, vel);
-        const a = osc('sawtooth', f, t, end, -4), b = osc('sawtooth', f, t, end, 5);
+        const a = osc('sawtooth', f, t, end, -4), b = lite ? null : osc('sawtooth', f, t, end, 5);
         const lp = ctx.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = Math.min(5200, 1400 + f * 2.2); lp.Q.value = 0.8;
         const pk = ctx.createBiquadFilter(); pk.type = 'peaking'; pk.frequency.value = 1100; pk.Q.value = 1.2; pk.gain.value = 5;
-        if (dur > 0.28) { vib(a, t, f, 5.8, 0.005, 0.12, end); vib(b, t, f, 5.8, 0.005, 0.12, end); }
-        a.connect(lp); b.connect(lp); lp.connect(pk); pk.connect(g);
+        if (!lite && dur > 0.28) { vib(a, t, f, 5.8, 0.005, 0.12, end); vib(b, t, f, 5.8, 0.005, 0.12, end); }
+        a.connect(lp); if (b) b.connect(lp); lp.connect(pk); pk.connect(g);
         out(g, 0.4);
       },
       /** Slow string pad holding the chord. */
@@ -259,7 +263,7 @@ export class Music {
         const end = t + dur + 1.0, g = ctx.createGain();
         g.gain.setValueAtTime(0.0001, t); g.gain.linearRampToValueAtTime(vel, t + Math.min(0.7, dur * 0.4)); g.gain.setValueAtTime(vel, t + dur); g.gain.linearRampToValueAtTime(0.0001, end);
         const lp = ctx.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 1500; lp.Q.value = 0.5;
-        for (const f of freqs) { osc('sawtooth', f, t, end, -7).connect(lp); osc('sawtooth', f, t, end, 7).connect(lp); }
+        for (const f of lite ? freqs.slice(0, 3) : freqs) { osc('sawtooth', f, t, end, -7).connect(lp); if (!lite) osc('sawtooth', f, t, end, 7).connect(lp); }
         lp.connect(g); out(g, 0.6);
       },
       /** Pipes drone: root and fifth, nasal. */

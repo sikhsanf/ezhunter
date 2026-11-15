@@ -4,10 +4,13 @@ export class Sfx {
     if (this.ctx) return;
     const AC = window.AudioContext || window.webkitAudioContext;
     if (!AC) return;
-    this.ctx = new AC();
+    // phones: ask for a larger audio buffer, which is what stops crackling when the game is busy drawing
+    const coarse = typeof matchMedia !== 'undefined' && matchMedia('(pointer: coarse)').matches;
+    try { this.ctx = new AC({ latencyHint: coarse ? 'playback' : 'interactive' }); } catch { this.ctx = new AC(); }
     this.master = this.ctx.createGain();
-    this.master.gain.value = 0.5;
-    this.master.connect(this.ctx.destination);
+    this.master.gain.value = 1.0;
+    const lim = this.ctx.createDynamicsCompressor(); lim.threshold.value = -10; lim.ratio.value = 6; lim.attack.value = 0.003; lim.release.value = 0.2;
+    this.master.connect(lim); lim.connect(this.ctx.destination);
     const len = this.ctx.sampleRate * 2;
     this.buf = this.ctx.createBuffer(1, len, this.ctx.sampleRate);
     const d = this.buf.getChannelData(0);
@@ -16,7 +19,7 @@ export class Sfx {
     const src = this.ctx.createBufferSource();
     src.buffer = this.buf; src.loop = true;
     const f = this.ctx.createBiquadFilter(); f.type = 'lowpass'; f.frequency.value = 380;
-    const g = this.ctx.createGain(); g.gain.value = 0.05;
+    const g = this.ctx.createGain(); g.gain.value = 0.022;
     const lfo = this.ctx.createOscillator(); lfo.frequency.value = 0.13;
     const lg = this.ctx.createGain(); lg.gain.value = 0.03;
     lfo.connect(lg); lg.connect(g.gain);
@@ -49,7 +52,7 @@ export class Sfx {
     o.connect(g); g.connect(this.master);
     o.start(t); o.stop(t + dur + 0.02);
   }
-  swing() { this.noise(0.22, 700, 0.35, 'bandpass', 2800, 1.5); }
+  swing() { this.noise(0.24, 600, 0.85, 'bandpass', 3400, 1.2); this.tone(300, 0.16, 'triangle', 0.14, 95); }
   hit() { this.noise(0.14, 420, 0.7, 'lowpass'); this.tone(120, 0.14, 'square', 0.16, 55); }
   fire() { this.noise(0.35, 1400, 0.35, 'bandpass', 300); this.tone(320, 0.3, 'sawtooth', 0.08, 90); }
   boom() { this.noise(0.6, 500, 0.9, 'lowpass', 60); this.tone(90, 0.5, 'sine', 0.4, 35); }
@@ -65,9 +68,10 @@ export class Sfx {
   step() { this.noise(0.07, 180 + Math.random() * 80, 0.16, 'lowpass'); }
   level() { [392, 523, 659, 784, 1046].forEach((f, i) => this.tone(f, 0.6, 'triangle', 0.14, 0, i * 0.08)); }
   block() { this.noise(0.12, 2400, 0.5, 'bandpass', 900, 2); this.tone(320, 0.14, 'square', 0.14, 140); }
-  draw() { this.noise(0.3, 400, 0.12, 'bandpass', 900, 4); }
-  bow() { this.noise(0.16, 900, 0.3, 'bandpass', 3200, 2); this.tone(190, 0.12, 'triangle', 0.16, 80); }
-  zap() { this.tone(900, 0.13, 'sawtooth', 0.07, 320); this.noise(0.08, 3000, 0.12, 'highpass'); }
+  draw() { this.noise(0.32, 380, 0.4, 'bandpass', 1000, 4); this.tone(120, 0.3, 'sawtooth', 0.06, 170); }
+  bow() { this.noise(0.2, 900, 0.8, 'bandpass', 3600, 1.6); this.tone(210, 0.2, 'triangle', 0.45, 70); this.tone(840, 0.07, 'square', 0.1, 420); }
+  zap() { this.tone(900, 0.14, 'sawtooth', 0.2, 300); this.tone(1350, 0.1, 'sine', 0.14, 500); this.noise(0.09, 3000, 0.3, 'highpass'); }
   ready() { this.noise(0.18, 1800, 0.3, 'bandpass', 5000, 3); this.tone(660, 0.1, 'triangle', 0.06, 990); }
+  torch() { this.noise(0.35, 900, 0.5, 'bandpass', 300, 0.8); this.tone(160, 0.25, 'sawtooth', 0.08, 90); }
   die() { this.tone(220, 1.6, 'sawtooth', 0.25, 40); }
 }

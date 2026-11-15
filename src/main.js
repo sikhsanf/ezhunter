@@ -8,6 +8,7 @@ import { TYPES, MonsterManager } from './monsters.js';
 import { Sfx } from './audio.js';
 import { createCoop } from './net.js';
 import { Music } from './music.js';
+import { buildChibi } from './chibi.js';
 
 const $ = (id) => document.getElementById(id);
 const DAY_LEN = 300; // seconds per full day/night cycle
@@ -39,7 +40,7 @@ addEventListener('resize', () => {
 });
 
 const world = createWorld(scene);
-world.load('vale');
+world.load('home');
 const sfx = new Sfx();
 const music = new Music();
 try { music.muted = localStorage.getItem('ezhunter-music') === 'off'; } catch { /* storage unavailable */ }
@@ -64,10 +65,10 @@ const player = {
   hp: 100, maxHp: 100, stamina: 100, mana: 100, hunger: 100,
   cls: 'warrior', battle: false, stanceK: 0, blocking: false, blockK: 0, drawing: false, drawT: 0, drawK: 0, reloadT: 0, looseK: 0, autoLoose: false,
   meat: 1, essence: 0, level: 1, kills: 0, dmgMul: 1,
-  staminaDelay: 0, chillT: 0, burnT: 0, dodgeT: 0, dodgeCd: 0, dodgeX: 0, dodgeZ: 0, stepAcc: 0, bob: 0,
+  staminaDelay: 0, chillT: 0, burnT: 0, torch: false, torchFuel: 120, dodgeT: 0, dodgeCd: 0, dodgeX: 0, dodgeZ: 0, stepAcc: 0, bob: 0,
 };
 const game = {
-  player, sfx, mapId: 'vale', state: 'menu', paused: false, time: 0, day: 1, isNight: false,
+  player, sfx, mapId: 'home', state: 'menu', paused: false, time: 0, day: 1, isNight: false,
   hitstop: 0, shake: 0, hurtFx: 0, healFx: 0,
 };
 window.__game = game;
@@ -76,7 +77,7 @@ window.__game = game;
 const CLASSES = {
   warrior: {
     name: 'Warrior', hp: 130, manaRegen: 3.5, speed: 1, node: 0xffb040, range: 16,
-    skills: [{ name: 'Whirlwind', cost: 25, color: 0xffc060 }, { name: 'Shield Bash', cost: 20, color: 0xffe9a8 }, { name: 'Second Wind', cost: 40, color: 0x5cff8f }],
+    skills: [],
   },
   mage: {
     name: 'Mage', hp: 85, manaRegen: 6.5, speed: 1, node: 0x7fb6ff, range: 48,
@@ -84,7 +85,7 @@ const CLASSES = {
   },
   archer: {
     name: 'Archer', hp: 100, manaRegen: 3.5, speed: 1.08, node: 0x9dff6a, range: 64,
-    skills: [{ name: 'Power Shot', cost: 22, color: 0xd8ff7a }, { name: 'Volley', cost: 30, color: 0x9dff6a }, { name: 'Field Dressing', cost: 40, color: 0x5cff8f }],
+    skills: [],
   },
 };
 let SPELLS = CLASSES.mage.skills;
@@ -156,12 +157,14 @@ const sword = new THREE.Group(); vm.add(sword);
   const leather = new THREE.MeshStandardMaterial({ color: 0x3a2618, roughness: 0.9 });
   const rune = new THREE.MeshStandardMaterial({ color: 0, emissive: 0x4ab8ff, emissiveIntensity: 2.2 });
   const add = (geo, mat, y, rz = 0) => { const m = new THREE.Mesh(geo, mat); m.position.y = y; m.rotation.z = rz; sword.add(m); return m; };
-  add(new THREE.BoxGeometry(0.075, 1.05, 0.016), steel, 0.67);
-  const tip = add(new THREE.ConeGeometry(0.053, 0.16, 4), steel, 1.27); tip.scale.z = 0.3; tip.rotation.y = Math.PI / 4;
-  add(new THREE.BoxGeometry(0.014, 0.8, 0.02), rune, 0.62);
-  add(new THREE.BoxGeometry(0.34, 0.05, 0.07), gold, 0.13);
-  add(new THREE.CylinderGeometry(0.028, 0.032, 0.26, 8), leather, -0.02);
-  add(new THREE.SphereGeometry(0.045, 8, 6), gold, -0.17);
+  const shaft = new THREE.MeshStandardMaterial({ color: 0x6b4a2c, roughness: 0.85 });
+  add(new THREE.CylinderGeometry(0.02, 0.023, 2.05, 8), shaft, 0.45);                       // shaft: butt at -0.57, head collar at 1.47
+  add(new THREE.CylinderGeometry(0.027, 0.027, 0.34, 8), leather, 0);                       // grip wrap
+  add(new THREE.CylinderGeometry(0.034, 0.028, 0.09, 8), gold, 1.48);
+  const tip = add(new THREE.ConeGeometry(0.062, 0.44, 4), steel, 1.74); tip.scale.z = 0.4; tip.rotation.y = Math.PI / 4;
+  add(new THREE.BoxGeometry(0.012, 0.2, 0.018), rune, 1.66);
+  const tassel = add(new THREE.ConeGeometry(0.05, 0.2, 6), new THREE.MeshStandardMaterial({ color: 0xb0302a, roughness: 0.9 }), 1.36); tassel.rotation.x = Math.PI;
+  add(new THREE.SphereGeometry(0.034, 8, 6), gold, -0.58);
 }
 // Hands: jointed fingers (three phalanges each) so the right can close into a fist on the grip
 // and the left can hold the spell orb in an open, cupped palm.
@@ -222,7 +225,7 @@ function setCurl(h, c, tc = 0.3) {
 // right hand: fist wrapped around the sword grip, so it follows every swing
 const rHand = buildHand(1, 1, 1);
 {
-  const HSCALE = 1.75, f = new THREE.Vector3(0.15, -0.6, 0.8).normalize(), up = new THREE.Vector3(0, 1, 0);
+  const HSCALE = 1.75, f = new THREE.Vector3(0.2, -0.9, 0.35).normalize(), up = new THREE.Vector3(0, 1, 0); // forearm runs back along the shaft
   const X = up.clone().addScaledVector(f, -up.dot(f)).normalize().negate(), Y = new THREE.Vector3().crossVectors(f, X);
   rHand.scale.setScalar(HSCALE);
   rHand.quaternion.setFromRotationMatrix(new THREE.Matrix4().makeBasis(X, Y, f));
@@ -242,11 +245,12 @@ orbLight.position.set(-0.9, 0.1, -0.2);
 camera.add(orbLight);
 
 const mkPose = (p, e) => ({ p: new THREE.Vector3(...p), q: new THREE.Quaternion().setFromEuler(new THREE.Euler(e[0], e[1], e[2], 'YXZ')) });
-const REST = mkPose([0.44, -0.4, -0.75], [-0.55, 0.25, -0.12]);
+// spear held low and forward; attacks are thrusts: draw back, drive out, recover
+const REST = mkPose([0.4, -0.42, -0.5], [-1.2, 0.14, -0.08]);
 const SWINGS = [
-  [mkPose([0.62, -0.26, -0.62], [-0.15, 0.1, -1.45]), mkPose([-0.35, -0.36, -0.62], [-0.15, 2.5, -1.45])],
-  [mkPose([-0.3, -0.26, -0.62], [-0.15, -0.1, 1.45]), mkPose([0.62, -0.36, -0.62], [-0.15, -2.5, 1.45])],
-  [mkPose([0.38, -0.1, -0.6], [0.95, 0, 0]), mkPose([0.26, -0.62, -0.82], [-1.9, 0, 0])],
+  [mkPose([0.5, -0.38, -0.2], [-1.42, 0.06, 0]), mkPose([0.26, -0.3, -1.15], [-1.5, 0.04, 0])],
+  [mkPose([0.44, -0.3, -0.2], [-1.5, 0.3, 0.1]), mkPose([0.08, -0.28, -1.15], [-1.52, 0.2, 0.1])],
+  [mkPose([0.52, -0.16, -0.05], [-1.25, 0, -0.1]), mkPose([0.22, -0.36, -1.35], [-1.62, 0, 0])],  // heavy lunge
 ];
 // ---------- class gear: shield (warrior), staff (mage), bow (archer) ----------
 const L = THREE.MathUtils.lerp;
@@ -305,26 +309,69 @@ vp(nockArrow, HC, paleWoodM, [0, 0, -0.4], AX, [0.006, 0.8, 0.006]);
 vp(nockArrow, CN, steelM, [0, 0, -0.83], [-Math.PI / 2, 0, 0], [0.016, 0.07, 0.016]);
 for (let i = 0; i < 3; i++) { const a = i * 2.094; vp(nockArrow, BX, featherM, [Math.cos(a) * 0.013, Math.sin(a) * 0.013, -0.06], [0, 0, a], [0.026, 0.002, 0.09]); }
 nock.add(gripHand(1, 0.8, -0.25, 0.55, 0.85, 1, 1.25));
+// a hand that brings a piece of meat up to eat
+const eatArm = new THREE.Group(); eatArm.visible = false; vm.add(eatArm);
+{
+  const h = buildHand(1, 0.85, 0.9); h.scale.setScalar(1.6); eatArm.add(h);
+  const meat = new THREE.Group(); meat.position.set(0, -0.02, -0.12); meat.rotation.x = -0.5; eatArm.add(meat);
+  vp(meat, HC, new THREE.MeshStandardMaterial({ color: 0xeee6d2, roughness: 0.6 }), [0, -0.06, 0], null, [0.014, 0.2, 0.014]);
+  vp(meat, HS, new THREE.MeshStandardMaterial({ color: 0xeee6d2, roughness: 0.6 }), [0, -0.17, 0], null, [0.028, 0.02, 0.022]);
+  vp(meat, HS, new THREE.MeshStandardMaterial({ color: 0xa8482c, roughness: 0.55, emissive: 0x3a0f08 }), [0, 0.07, 0], null, [0.05, 0.07, 0.046]);
+}
+// a torch for the night
+const torchVM = new THREE.Group(); torchVM.visible = false; torchVM.rotation.set(0.25, 0, 0.3); vm.add(torchVM);
+vp(torchVM, HC, woodM, [0, -0.1, 0], null, [0.018, 0.46, 0.018]);
+vp(torchVM, HC, bracerD, [0, 0.13, 0], null, [0.03, 0.09, 0.03]);
+const torchFlameM = new THREE.MeshBasicMaterial({ color: 0xffffff }); torchFlameM.color.setRGB(4, 1.9, 0.5);
+const torchFlame = vp(torchVM, CN, torchFlameM, [0, 0.27, 0], null, [0.042, 0.2, 0.042]);
+const TORCH_MAX = 120; // seconds of light
+function toggleTorch() {
+  const p = player;
+  if (game.state !== 'playing') return;
+  if (!p.torch && p.torchFuel < 3) { msg('The torch is burnt out. It recovers slowly, or at once at your cabin'); sfx.deny(); return; }
+  p.torch = !p.torch; sfx.torch();
+}
 const BOW_REST = { p: [-0.1, -0.36, -0.8], r: [0, 0.12, -0.6] }, BOW_DRAW = { p: [-0.2, -0.24, -0.98], r: [0, 0.1, -0.38] };
 let staffKick = 0, staffCd = 0, shieldKick = 0;
 
 function updateViewmodel(dt, hs) {
   const p = player, t = game.time, c = p.cls;
   p.stanceK += ((p.battle ? 1 : 0) - p.stanceK) * Math.min(1, dt * 9);
-  const k = p.stanceK, low = (1 - k) * 0.95, shown = k > 0.03;
+  let eatU = 0;
+  if (p.eatT > 0) {
+    p.eatT += dt / 1.4;
+    if (!p.eatBit && p.eatT > 0.45) {
+      p.eatBit = true; p.meat = Math.max(0, p.meat - 1);
+      p.hunger = Math.min(100, p.hunger + 34); p.hp = Math.min(p.maxHp, p.hp + 10); sfx.eat();
+      lookDir(v1); v2.set(p.pos.x, p.pos.y + EYE - 0.25, p.pos.z).addScaledVector(v1, 0.6); burst(v2, 0xc9764a, 8, 1.4, 0.5, 9);
+    }
+    if (p.eatBit && p.eatT > 0.62 && p.eatT < 0.66) sfx.eat();
+    eatU = Math.min(1, p.eatT / 0.22) * (p.eatT > 0.8 ? Math.max(0, (1 - p.eatT) / 0.2) : 1);
+    const chew = p.eatT > 0.3 && p.eatT < 0.8 ? Math.sin(p.eatT * 42) * 0.018 : 0;
+    eatArm.position.set(0.3 - eatU * 0.1, -1.1 + eatU * 0.7 + chew, -0.55 + eatU * 0.08);
+    eatArm.rotation.set(0.35 + eatU * 0.75, -0.3, 0.2);
+    if (p.eatT >= 1) p.eatT = 0;
+  }
+  eatArm.visible = p.eatT > 0;
+  const k = p.stanceK, low = (1 - k) * 0.95 + eatU * 0.7, shown = k > 0.03;
   const sway = Math.sin(p.bob) * 0.012 * Math.min(1, hs / 6);
   vm.position.set(sway, Math.abs(Math.cos(p.bob)) * 0.012 * Math.min(1, hs / 6) - (p.onGround ? 0 : 0.02), 0);
   sword.visible = shieldArm.visible = c === 'warrior' && shown;
   staff.visible = c === 'mage' && shown; lArm.visible = false; // the mage fights with the staff alone
   bowArm.visible = c === 'archer' && shown;
   orbKick = Math.max(0, orbKick - dt * 4); staffKick = Math.max(0, staffKick - dt * 4.5); shieldKick = Math.max(0, shieldKick - dt * 4);
-  const col = SPELLS[spell].color;
+  const col = SPELLS[spell] ? SPELLS[spell].color : 0xffe2b8;
   if (c === 'warrior') {
     const b = p.blockK, sk = Math.sin(shieldKick * Math.PI);
     poseSword();
     sword.position.x += b * 0.22; sword.position.y -= low + b * 1.15; sword.position.z += b * 0.3; // sword hand held low and back
     shieldArm.position.set(L(-0.52, -0.01, b), L(-0.52, -0.2, b) - low, L(-0.62, -0.42, b) - sk * 0.35);
     shieldArm.rotation.set(L(0.1, -0.06, b) + sk * 0.2, L(0.6, 0, b), L(0.18, 0, b));
+    const age = t - (game.shieldHit ?? -9);
+    if (age >= 0 && age < 0.7) { // blocked blow: knocked back toward you, then a damped bounce
+      const rc = Math.exp(-6.5 * age) * Math.cos(19 * age);
+      shieldArm.position.z += rc * 0.2; shieldArm.position.y -= rc * 0.05; shieldArm.rotation.x += rc * 0.3; shieldArm.rotation.z += rc * 0.08;
+    }
   } else if (c === 'mage') {
     const a = Math.sin(Math.max(staffKick, orbKick * 0.7) * Math.PI);
     staff.position.lerpVectors(STAFF_REST.p, STAFF_CAST.p, a); staff.position.y -= low;
@@ -353,8 +400,15 @@ function updateViewmodel(dt, hs) {
     nock.rotation.z = -dip * 0.5;
     nockArrow.visible = re > 0.45;
   }
-  orbLight.color.set(c === 'mage' ? col : 0xffe2b8);
-  orbLight.intensity = (game.isNight ? 2.2 : 0.8) * (c === 'mage' ? 1 : 0.6) * k + orbKick * 6;
+  torchVM.visible = p.torch;
+  if (p.torch) { // a lit torch: one warm, far-reaching light (reuses the hand light, so no extra lights to pay for)
+    const fl = 1 + Math.sin(t * 13) * 0.07 + Math.sin(t * 29) * 0.05;
+    torchVM.position.set(-0.52, -0.42 - eatU * 0.5, -0.72); torchFlame.scale.set(1 / fl, fl, 1 / fl);
+    orbLight.color.set(0xffb060); orbLight.distance = 38; orbLight.intensity = 26 * fl * Math.min(1, p.torchFuel / 8);
+  } else {
+    orbLight.distance = 14; orbLight.color.set(c === 'mage' ? col : 0xffe2b8);
+    orbLight.intensity = (game.isNight ? 2.2 : 0.8) * (c === 'mage' ? 1 : 0.6) * k + orbKick * 6;
+  }
 }
 
 const swing = { active: false, t: 0, type: 0, dur: 0.42, hitDone: false, queued: false, combo: 0, comboT: 0 };
@@ -398,6 +452,7 @@ game.enemyBolt = (from, dmg, name, color = 0xff5a18, effect, tgt = player) => {
 };
 function explode(pos, dmg, direct) {
   burst(pos, 0xff7a22, 46, 9, 0.7, 5); burst(pos, 0xffd27a, 16, 4, 0.4, 0);
+  if (pos.y - heightAt(pos.x, pos.z) < 2.5) { addMark('fire', pos.x, pos.z, 3.6, 8); zones.push({ kind: 'fire', x: pos.x, z: pos.z, r: 3, t: 4, tick: 0.3 }); } // the ground keeps burning
   flash(pos, 0xff8a33, 140, 0.45); sfx.boom();
   game.shake = Math.max(game.shake, 0.25);
   for (const m of monsters.list) {
@@ -415,6 +470,102 @@ function showRing(x, y, z, r, color) {
   ring.position.set(x, y + 0.25, z); ring.material.color.set(color).multiplyScalar(2.5); ringT = 0.5; ringR = r; ring.visible = true;
 }
 
+// ---------- mage marks: scorched, burning ground and frozen ground ----------
+function markTex(kind) {
+  const c = document.createElement('canvas'); c.width = c.height = 256;
+  const x = c.getContext('2d'), g = x.createRadialGradient(128, 128, 0, 128, 128, 128);
+  if (kind === 'fire') {
+    g.addColorStop(0, 'rgba(12,6,3,.92)'); g.addColorStop(0.45, 'rgba(26,12,6,.8)'); g.addColorStop(0.8, 'rgba(60,24,8,.35)'); g.addColorStop(1, 'rgba(0,0,0,0)');
+    x.fillStyle = g; x.fillRect(0, 0, 256, 256);
+    x.lineCap = 'round';
+    for (let i = 0; i < 26; i++) { // glowing cracks
+      const a = Math.random() * 6.283, r0 = 10 + Math.random() * 40, r1 = r0 + 20 + Math.random() * 55;
+      x.strokeStyle = `rgba(255,${120 + Math.random() * 90 | 0},30,${0.5 + Math.random() * 0.4})`; x.lineWidth = 1.5 + Math.random() * 3;
+      x.beginPath(); x.moveTo(128 + Math.cos(a) * r0, 128 + Math.sin(a) * r0); x.lineTo(128 + Math.cos(a + 0.25) * (r0 + r1) / 2, 128 + Math.sin(a + 0.25) * (r0 + r1) / 2); x.lineTo(128 + Math.cos(a) * r1, 128 + Math.sin(a) * r1); x.stroke();
+    }
+  } else if (kind === 'ice') {
+    g.addColorStop(0, 'rgba(235,250,255,.75)'); g.addColorStop(0.6, 'rgba(150,215,255,.55)'); g.addColorStop(0.92, 'rgba(120,200,255,.5)'); g.addColorStop(1, 'rgba(120,200,255,0)');
+    x.fillStyle = g; x.fillRect(0, 0, 256, 256);
+    x.strokeStyle = 'rgba(255,255,255,.85)'; x.lineCap = 'round';
+    for (let i = 0; i < 12; i++) { // frost crystal arms with side branches
+      const a = i / 12 * 6.283 + Math.random() * 0.2, L = 70 + Math.random() * 50;
+      x.lineWidth = 2.5; x.beginPath(); x.moveTo(128, 128); x.lineTo(128 + Math.cos(a) * L, 128 + Math.sin(a) * L); x.stroke();
+      x.lineWidth = 1.5;
+      for (let k = 1; k < 4; k++) for (const sd of [-1, 1]) { const bx = 128 + Math.cos(a) * L * k / 4, by = 128 + Math.sin(a) * L * k / 4; x.beginPath(); x.moveTo(bx, by); x.lineTo(bx + Math.cos(a + sd * 0.9) * 16, by + Math.sin(a + sd * 0.9) * 16); x.stroke(); }
+    }
+  } else {
+    g.addColorStop(0, 'rgba(120,255,160,.35)'); g.addColorStop(0.85, 'rgba(90,255,140,.3)'); g.addColorStop(1, 'rgba(90,255,140,0)');
+    x.fillStyle = g; x.fillRect(0, 0, 256, 256);
+    x.strokeStyle = 'rgba(200,255,215,.9)'; x.lineWidth = 4;
+    for (const r of [112, 84]) { x.beginPath(); x.arc(128, 128, r, 0, 6.283); x.stroke(); }
+    x.lineWidth = 3; for (let i = 0; i < 6; i++) { const a = i / 6 * 6.283; x.beginPath(); x.moveTo(128 + Math.cos(a) * 84, 128 + Math.sin(a) * 84); x.lineTo(128 + Math.cos(a + 2.094) * 84, 128 + Math.sin(a + 2.094) * 84); x.stroke(); }
+  }
+  const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace;
+  return t;
+}
+const MARK_TEX = { fire: markTex('fire'), ice: markTex('ice'), heal: markTex('heal') };
+const marks = [0, 1, 2, 3, 4, 5].map(() => {
+  const geo = new THREE.PlaneGeometry(1, 1, 10, 10); geo.rotateX(-Math.PI / 2);
+  const base = geo.attributes.position.array.slice();
+  const mesh = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ transparent: true, opacity: 0, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -4, polygonOffsetUnits: -4 }));
+  mesh.frustumCulled = false; mesh.visible = false; mesh.renderOrder = 2; scene.add(mesh);
+  return { mesh, geo, base, t: 0, life: 1 };
+});
+let markI = 0;
+/** Lay a mark on the ground, draped over the terrain. */
+function addMark(kind, x, z, r, life) {
+  const m = marks[markI]; markI = (markI + 1) % marks.length;
+  const a = m.geo.attributes.position;
+  for (let i = 0; i < a.count; i++) { const wx = x + m.base[i * 3] * 2 * r, wz = z + m.base[i * 3 + 2] * 2 * r; a.setXYZ(i, wx, heightAt(wx, wz) + 0.09, wz); }
+  a.needsUpdate = true;
+  m.mesh.material.map = MARK_TEX[kind]; m.mesh.material.needsUpdate = true;
+  m.mesh.material.color.setScalar(kind === 'heal' ? 1.6 : 1); m.maxO = kind === 'ice' ? 0.6 : 1;
+  m.t = m.life = life; m.mesh.visible = true;
+}
+// ice shards that jut up around a Frost Nova
+const shardMat = new THREE.MeshStandardMaterial({ color: 0xcfeeff, emissive: 0x3aa0ff, emissiveIntensity: 1.1, roughness: 0.2, transparent: true, opacity: 0.85, flatShading: true });
+const shards = Array.from({ length: 14 }, () => { const m = new THREE.Mesh(new THREE.ConeGeometry(0.34, 1.9, 5), shardMat); m.visible = false; scene.add(m); return m; });
+let shardT = 0, shardLife = 1;
+function raiseShards(x, z, r, life) {
+  shards.forEach((m, i) => {
+    const a = i / shards.length * 6.283 + Math.random() * 0.3, rr = r * (0.45 + Math.random() * 0.5), sx = x + Math.cos(a) * rr, sz = z + Math.sin(a) * rr;
+    m.position.set(sx, heightAt(sx, sz), sz); m.rotation.set((Math.random() - 0.5) * 0.7, Math.random() * 6, (Math.random() - 0.5) * 0.7);
+    m.userData.h = 0.7 + Math.random() * 1.1; m.visible = true;
+  });
+  shardT = shardLife = life;
+}
+const zones = []; // lingering spell areas: { kind, x, z, r, t, tick }
+function updateMarks(dt) {
+  for (const m of marks) {
+    if (m.t <= 0) continue;
+    m.t -= dt;
+    m.mesh.material.opacity = Math.min(1, m.t / 1.2, (m.life - m.t) / 0.15) * (m.maxO || 1);
+    if (m.t <= 0) m.mesh.visible = false;
+  }
+  if (shardT > 0) {
+    shardT -= dt;
+    const up = Math.min(1, (shardLife - shardT) / 0.18), down = Math.min(1, Math.max(0, shardT) / 0.8);
+    for (const m of shards) { const s = m.userData.h * up * down; m.scale.set(s, s, s); m.position.y = heightAt(m.position.x, m.position.z) + 0.95 * s - 0.1; if (shardT <= 0) m.visible = false; }
+  }
+  for (let i = zones.length - 1; i >= 0; i--) {
+    const zn = zones[i];
+    zn.t -= dt; zn.tick -= dt;
+    const fire = zn.kind === 'fire';
+    for (let k = 0; k < (fire ? 3 : 1); k++) { // flames lick up from the scorch; frost glitters
+      const a = Math.random() * 6.283, rr = Math.sqrt(Math.random()) * zn.r, px = zn.x + Math.cos(a) * rr, pz = zn.z + Math.sin(a) * rr;
+      v2.set(px, heightAt(px, pz) + 0.15, pz);
+      if (fire) burst(v2, Math.random() < 0.3 ? 0xffd27a : 0xff6a18, 1, 0.5, 0.75, -4.5, 0.2); else if (Math.random() < 0.5) burst(v2, 0xbfeaff, 1, 0.3, 0.9, -0.6, 0.1);
+    }
+    if (zn.tick <= 0) {
+      zn.tick = 0.5;
+      for (const m of monsters.list) {
+        if (m.dead || Math.hypot(m.pos.x - zn.x, m.pos.z - zn.z) > zn.r + m.def.radius) continue;
+        if (fire) hitMonster(m, 4, 0); else hitMonster(m, 1, 0, { slow: 1.4 });
+      }
+    }
+    if (zn.t <= 0) zones.splice(i, 1);
+  }
+}
 // ---------- water ripples: a small pool of expanding rings ----------
 const ripples = [0, 1, 2, 3, 4, 5, 6, 7].map(() => {
   const m = new THREE.Mesh(new THREE.RingGeometry(0.9, 1, 28), new THREE.MeshBasicMaterial({ color: 0xdff2ff, transparent: true, opacity: 0, depthWrite: false }));
@@ -515,7 +666,7 @@ game.damagePlayer = (dmg, from, name, kb = 6, effect) => {
     if ((-Math.sin(player.yaw) * bx - Math.cos(player.yaw) * bz) / bl > 0.2) {
       const held = player.stamina > 0;
       player.stamina = Math.max(0, player.stamina - dmg * 0.7); player.staminaDelay = 1;
-      dmg *= held ? 0.2 : 0.6; kb *= 0.3; effect = undefined; shieldKick = 0.5;
+      dmg *= held ? 0.2 : 0.6; kb *= 0.3; effect = undefined; game.shieldHit = game.time; // the shield is driven back and springs forward again
       camera.getWorldDirection(v1); v2.copy(camera.position).addScaledVector(v1, 0.9); v2.y -= 0.3;
       burst(v2, 0xffe9a8, 14, 5, 0.3, 8); sfx.block();
       if (!held) msg('Guard broken!');
@@ -587,11 +738,11 @@ function swordHit() {
   for (const m of monsters.list) {
     if (m.dead) continue;
     const dx = m.pos.x - player.pos.x, dz = m.pos.z - player.pos.z, d = Math.hypot(dx, dz);
-    const reach = 3.0 + m.def.radius;
+    const reach = 3.9 + m.def.radius; // a spear reaches further than a sword, in a narrower line
     if (d > reach || Math.abs(m.center.y - (player.pos.y + 1.2)) > 3.2) continue;
     const dotp = (dx * fx + dz * fz) / ((d || 1) * fl);
-    if (dotp < 0.3 && d > m.def.radius + 0.9) continue;
-    hitMonster(m, swing.type === 2 ? 34 : 21, swing.type === 2 ? 2 : 1.1);
+    if (dotp < 0.6 && d > m.def.radius + 0.9) continue;
+    hitMonster(m, swing.type === 2 ? 38 : 23, swing.type === 2 ? 2.4 : 1.2);
     v2.copy(m.center).lerp(camera.position, 0.25);
     burst(v2, 0xffc27a, 14, 6, 0.35, 8); burst(v2, 0xff3a22, 10, 4, 0.5, 10);
     any = true;
@@ -604,6 +755,7 @@ function swordHit() {
 
 function cast() {
   if (castCd > 0 || game.state !== 'playing') return;
+  if (player.cls !== 'mage') return; // only the mage casts
   if (!player.battle) { setStance(true); return; }
   const s = SPELLS[spell];
   if (player.mana < s.cost) { sfx.deny(); msg('Not enough mana'); castCd = 0.3; return; }
@@ -629,6 +781,8 @@ function cast() {
       burst(v2, 0x8fe6ff, 2, 9, 0.7, 0);
     }
     showRing(player.pos.x, player.pos.y, player.pos.z, R, 0x66d8ff);
+    addMark('ice', player.pos.x, player.pos.z, R, 7); raiseShards(player.pos.x, player.pos.z, R, 6); // the ground stays frozen and keeps slowing
+    zones.push({ kind: 'ice', x: player.pos.x, z: player.pos.z, r: R, t: 6, tick: 0.5 });
     flash(camera.position, 0x66d8ff, 90, 0.5); sfx.frost();
   } else {
     player.hp = Math.min(player.maxHp, player.hp + 40);
@@ -709,6 +863,7 @@ function loose() {
 }
 function atkPress() {
   if (game.state !== 'playing') return;
+  if (player.eatT > 0) return; // hands are full
   if (!player.battle) { setStance(true); return; }
   if (!game.lock && !game.lockOff && game.target) game.lock = game.target; // start fighting what you are facing
   if (player.cls === 'warrior' && !player.blocking) attack();
@@ -722,6 +877,7 @@ function healSelf(n) {
   player.hp = Math.min(player.maxHp, player.hp + n);
   camera.getWorldDirection(v1); v2.copy(camera.position).addScaledVector(v1, 2.6);
   burst(v2, 0x5cff8f, 16, 1.2, 1, -2, 2.2);
+  addMark('heal', player.pos.x, player.pos.z, 2.4, 2.2);
   game.healFx = 1; sfx.heal();
 }
 /** Warrior and archer skills (the mage's spells live in cast()). */
@@ -819,7 +975,7 @@ function applyStart(cls, sv) {
   const p = player;
   p.cls = cls; SPELLS = CLASSES[cls].skills;
   document.body.dataset.cls = cls;
-  for (let k = 0; k < 3; k++) $('s' + k).innerHTML = `<b>${k + 1}</b>${SPELLS[k].name}<br><i>${SPELLS[k].cost} mana</i>`;
+  for (let k = 0; k < 3; k++) if (SPELLS[k]) $('s' + k).innerHTML = `<b>${k + 1}</b>${SPELLS[k].name}<br><i>${SPELLS[k].cost} mana</i>`;
   p.maxHp = p.hp = CLASSES[cls].hp;
   if (sv) {
     if (sv.map !== game.mapId) { world.load(sv.map); game.mapId = sv.map; }
@@ -832,14 +988,14 @@ function applyStart(cls, sv) {
 
 function selectSpell(i) {
   spell = (i + 3) % 3;
-  orbMat.emissive.set(SPELLS[spell].color);
+  if (SPELLS[spell]) orbMat.emissive.set(SPELLS[spell].color);
   for (let k = 0; k < 3; k++) $('s' + k).classList.toggle('on', k === spell);
 }
 function eat() {
   if (player.meat <= 0) { msg('No meat — go hunt'); sfx.deny(); return; }
   if (player.hunger > 92 && player.hp >= player.maxHp) { msg('You are not hungry'); return; }
-  player.meat--; player.hunger = Math.min(100, player.hunger + 34); player.hp = Math.min(player.maxHp, player.hp + 10);
-  sfx.eat();
+  if (player.eatT > 0) return;
+  player.eatT = 0.0001; player.eatBit = false; // the bite lands partway through the animation
 }
 const needEssence = () => Math.round(40 * Math.pow(player.level, 1.35));
 function gainEssence(v) {
@@ -884,13 +1040,32 @@ addEventListener('keydown', (e) => {
   else if (e.code === 'KeyP') saveGame();
   else if (e.code === 'KeyO') toggleCoop();
   else if (e.code === 'KeyM') toggleMusic();
+  else if (e.code === 'KeyB') toggleBag();
+  else if (e.code === 'KeyL') toggleTorch();
+  else if (e.code === 'KeyH') goHome();
   if (e.code === 'Space' || e.code === 'Tab') e.preventDefault();
 });
 addEventListener('keyup', (e) => { keys[e.code] = false; });
 addEventListener('blur', () => { for (const k in keys) keys[k] = false; input.atk = input.alt = false; });
+// ---------- bag ----------
+function toggleBag(open = $('bagPanel').style.display !== 'flex') {
+  if (game.state !== 'playing' && open) return;
+  if (open && game.panel) toggleCoop(false);
+  game.panel = open;
+  $('bagPanel').style.display = open ? 'flex' : 'none';
+  if (open) { $('bagCls').textContent = CLASSES[player.cls].name; $('bagHome').style.display = world.map.safe ? 'none' : 'block'; if (document.pointerLockElement) document.exitPointerLock(); if (!coop.role) game.paused = true; }
+  else { game.paused = false; $('pause').style.display = 'none'; if (!touch.on && game.state === 'playing') lock(); }
+}
+$('bagPill').addEventListener('click', () => toggleBag());
+$('torchPill').addEventListener('click', toggleTorch);
+$('bagClose').addEventListener('click', () => toggleBag(false));
+$('bagEat').addEventListener('click', () => { toggleBag(false); eat(); });
+$('bagSave').addEventListener('click', () => { toggleBag(false); saveGame(); });
+$('bagHome').addEventListener('click', () => { toggleBag(false); goHome(); });
 // ---------- co-op panel ----------
 function toggleCoop(open = !game.panel) {
   if (game.state !== 'playing' && open) return;
+  if (open) $('bagPanel').style.display = 'none';
   game.panel = open;
   $('coopPanel').style.display = open ? 'flex' : 'none';
   if (open) { coop.render(); $('coopName').value = coop.name; if (document.pointerLockElement) document.exitPointerLock(); if (!coop.role) game.paused = true; }
@@ -912,7 +1087,7 @@ addEventListener('mousemove', (e) => {
 addEventListener('mousedown', (e) => {
   if (game.state !== 'playing' || game.paused || document.pointerLockElement !== renderer.domElement) return;
   if (e.button === 0) { input.atk = true; atkPress(); }
-  else if (e.button === 2) { input.alt = true; if (player.cls !== 'warrior') cast(); else if (!player.battle) setStance(true); }
+  else if (e.button === 2) { input.alt = true; if (player.cls === 'mage') cast(); else if (player.cls === 'warrior' && !player.battle) setStance(true); }
 });
 addEventListener('mouseup', (e) => {
   if (e.button === 0) { input.atk = false; atkRelease(); } else if (e.button === 2) input.alt = false;
@@ -939,7 +1114,8 @@ function begin(cls, sv) {
     try { const f = document.documentElement.requestFullscreen?.(); if (f && f.catch) f.catch(() => {}); } catch { /* ignored */ }
     try { const o = screen.orientation?.lock?.('landscape'); if (o && o.catch) o.catch(() => {}); } catch { /* ignored */ }
   } else lock();
-  msg(sv ? `Welcome back, ${CLASSES[cls].name}` : `${CLASSES[cls].name} — press R (or Stance) to ready your weapon`);
+  syncHomeAvatar();
+  msg(sv ? `Welcome back, ${CLASSES[cls].name}` : `${CLASSES[cls].name} — this is your cabin. Step through a waygate to hunt.`);
 }
 document.querySelectorAll('#classes .card').forEach((c) => c.addEventListener('click', () => begin(c.dataset.cls)));
 {
@@ -952,7 +1128,16 @@ document.querySelectorAll('#classes .card').forEach((c) => c.addEventListener('c
   }
 }
 $('pause').addEventListener('click', lock);
-$('dead').addEventListener('click', () => location.reload());
+$('deadNew').addEventListener('click', () => { try { localStorage.removeItem(SAVE_KEY); } catch { /* */ } location.reload(); });
+$('deadHome').addEventListener('click', () => {
+  const p = player;
+  p.hp = p.maxHp; p.hunger = Math.max(p.hunger, 60); p.stamina = 100; p.mana = 100; p.burnT = p.chillT = 0; p.eatT = 0; p.battle = false; p.torch = false; p.vel.set(0, 0, 0);
+  game.state = 'playing'; game.lock = null; game.battleT = 0; game.paused = false;
+  $('dead').style.display = 'none'; $('hud').style.display = 'block';
+  arrive('home'); // rank, meat and kills are kept
+  if (!touch.on) lock();
+  msg('You wake at your cabin, patched up');
+});
 renderer.domElement.addEventListener('click', () => { if (game.state === 'playing' && !document.pointerLockElement && !touch.on) lock(); });
 
 // ---------------------------------------------------------------- touchscreen
@@ -1014,7 +1199,6 @@ bindBtn($('bDodge'), () => dodge());
 bindBtn($('bEat'), () => eat());
 bindBtn($('bStance'), () => setStance(!player.battle));
 bindBtn($('bBlock'), () => { if (!player.battle) setStance(true); touch.block = true; }, () => { touch.block = false; });
-bindBtn($('bSave'), () => saveGame());
 bindBtn($('target'), () => cycleTarget());
 [0, 1, 2].forEach((k) => bindBtn($('s' + k), () => selectSpell(k)));
 
@@ -1112,7 +1296,7 @@ function updateHud(dayT) {
   $('hg').style.width = Math.max(0, player.hunger) + '%';
   $('hg').classList.toggle('low', player.hunger < 25);
   $('hp').classList.toggle('low', player.hp < player.maxHp * 0.3);
-  setText('meat', player.meat); setText('kills', player.kills); setText('lvl', player.level);
+  setText('meat', player.meat); setText('kills', player.kills); setText('lvl', player.level); setText('torchPill', player.torch || player.torchFuel < TORCH_MAX - 1 ? `Torch ${Math.round(player.torchFuel / TORCH_MAX * 100)}%` : 'Torch'); $('torchPill').classList.toggle('on', player.torch); setText('meatHud', player.meat); setText('eatN', player.meat);
   $('xpf').style.width = (player.essence / needEssence() * 100) + '%';
   const part = dayT < 0.06 ? 'Dawn' : dayT < 0.42 ? 'Day' : dayT < 0.5 ? 'Dusk' : 'Night';
   setText('day', `${MAPS[game.mapId].name} · Day ${game.day} · ${part}`);
@@ -1189,9 +1373,12 @@ function updatePlayer(dt) {
   if (p.staminaDelay <= 0) p.stamina += 24 * dt * (p.battle ? 1 : 1.4);
   p.stamina = Math.max(0, Math.min(100, p.stamina));
   p.mana = Math.min(100, p.mana + CLASSES[p.cls].manaRegen * dt);
-  p.hunger = Math.max(0, p.hunger - (0.42 + (sprint ? 0.3 : 0)) * (p.battle ? 1 : 0.85) * dt);
+  p.hunger = Math.max(0, p.hunger - (world.map.safe ? 0 : 0.42 + (sprint ? 0.3 : 0)) * (p.battle ? 1 : 0.85) * dt);
+  if (world.map.safe && p.hp < p.maxHp) p.hp = Math.min(p.maxHp, p.hp + 6 * dt); // rest at the cabin
   if (p.hunger <= 0) { p.hp -= 2.6 * dt; if (p.hp <= 0) die('Starved in the wilds'); }
   else if (p.hunger > 50 && p.hp < p.maxHp) p.hp = Math.min(p.maxHp, p.hp + 1.3 * dt);
+  if (p.torch) { p.torchFuel -= dt; if (p.torchFuel <= 0) { p.torchFuel = 0; p.torch = false; msg('Your torch has burnt out'); } }
+  else p.torchFuel = Math.min(TORCH_MAX, p.torchFuel + dt * (world.map.safe ? 30 : 0.4));
   p.chillT -= dt;
   if (p.burnT > 0) {
     p.burnT -= dt; p.hp -= 3 * dt; game.hurtFx = Math.max(game.hurtFx, 0.35);
@@ -1285,6 +1472,20 @@ function updateLoot(dt) {
   }
 }
 
+let homeAv = null;
+/** At the cabin your own character stands on the pedestal, so you can see what you look like. */
+function syncHomeAvatar() {
+  if (homeAv) { scene.remove(homeAv.g); homeAv.g.traverse((o) => { if (o.material) { if (o.material.map) o.material.map.dispose(); o.material.dispose(); } }); homeAv = null; }
+  if (!world.home || game.state !== 'playing') return;
+  homeAv = buildChibi(player.cls, 0xe8c98a);
+  homeAv.g.position.copy(world.home.pedestal); scene.add(homeAv.g);
+  for (const a of homeAv.arms) a.g.rotation.z = a.s * 0.16;
+}
+function goHome() {
+  if (world.map.safe) { msg('You are already home'); return; }
+  if (game.battleT > 0) { msg("You can't slip away in the middle of a fight"); sfx.deny(); return; }
+  travel('home');
+}
 function travel(id) {
   if (game.travelling) return;
   game.travelling = true; sfx.frost();
@@ -1299,11 +1500,17 @@ function arrive(id) {
   player.pos.set(0, heightAt(0, 0), 0); player.vel.set(0, 0, 0);
   monsters.seed();
   msg(`${MAPS[id].name} — ${MAPS[id].sub}`);
+  syncHomeAvatar();
   setTimeout(() => saveGame(true), 700);
 }
 let ambAcc = 0;
 /** Weather: snowfall on the tundra, rising embers in the wastes, fireflies in the vale at night. */
 function ambient(dt) {
+  if (world.home) { // hearth smoke and campfire sparks
+    if (Math.random() < dt * 14) burst(world.home.chimney, 0x55504a, 1, 0.4, 2.6, -1.3, 0.3);
+    if (Math.random() < dt * 22) burst(world.home.fireAt, Math.random() < 0.3 ? 0xffd27a : 0xff6a18, 1, 0.7, 0.9, -3.5, 0.35);
+    if (homeAv) homeAv.g.rotation.y += dt * 0.6;
+  }
   const kind = world.map.ambient, P = player.pos;
   ambAcc += dt * (kind === 'snow' ? 140 : kind === 'ember' ? 45 : game.isNight ? 22 : 0);
   while (ambAcc >= 1) {
@@ -1327,7 +1534,7 @@ function update(dt) {
   updatePlayer(dt);
   updateTarget(dt);
   coop.frame(dt);
-  updateRipples(dt); updateTrajectory();
+  updateRipples(dt); updateTrajectory(); updateMarks(dt);
   // "in battle" drives the music: locked on to something, or a hostile creature is coming for you
   let fight = !!game.lock;
   if (!fight) for (const m of monsters.list) {
@@ -1415,7 +1622,7 @@ function frame() {
   // soundtrack: title air on the menu, each map's own theme, and the reel while fighting
   if (game.state !== 'playing') music.play('title', 2, 2.5);
   else if (game.battleT > 0) music.play('battle', 0.5, 0.9);
-  else music.play(game.mapId, 2.2, 2.6);
+  else music.play(world.map.safe ? 'title' : game.mapId, 2.2, 2.6); // the cabin shares the gentle title air
   const rawDt = clock.getDelta();
   qTick(rawDt);
   let dt = Math.min(0.05, rawDt);
@@ -1445,7 +1652,33 @@ function frame() {
 const coop = createCoop({ game, player, scene, monsters, MAPS, TYPES, CLASSES, heightAt, msg, localSlam, enemyShot, ghostShot });
 game.coop = coop;
 setQMode(Q.mode);
-game.debug = { coop, toggleCoop, music, Q, applyQ, setQMode, world, scene, renderer, camera, composer, attack, cast, selectSpell, eat, dodge, travel, begin, setStance, atkPress, atkRelease, saveGame, readSave, input, bolts, rig: { sword, staff, bowArm, shieldArm, nock },
+// On tablets and phones, act on the touch itself instead of waiting for the browser's follow-up click:
+// that click never arrives if another finger is on the screen, which is what made these buttons feel dead.
+for (const id of ['coopPill', 'musicPill', 'qPill', 'bagPill', 'torchPill', 'deadHome', 'deadNew', 'coopHost', 'coopJoin', 'coopLeave', 'coopClose', 'bagClose', 'bagEat', 'bagSave', 'bagHome']) {
+  const el = $(id);
+  el.addEventListener('touchstart', (e) => { e.preventDefault(); e.stopPropagation(); el.click(); }, { passive: false });
+}
+/** Draw each class once, holding its weapon, for the cards on the start page. */
+function renderPortraits() {
+  try {
+    const r = new THREE.WebGLRenderer({ alpha: true, antialias: true, preserveDrawingBuffer: true });
+    r.setSize(240, 280); r.toneMapping = THREE.ACESFilmicToneMapping;
+    const sc = new THREE.Scene(), cam = new THREE.PerspectiveCamera(30, 240 / 280, 0.1, 20);
+    sc.add(new THREE.HemisphereLight(0xffffff, 0x665544, 1.7));
+    const dl = new THREE.DirectionalLight(0xfff0dd, 2.6); dl.position.set(2, 4, 5); sc.add(dl);
+    cam.position.set(0.75, 1.0, 3.5); cam.lookAt(0.05, 0.86, 0);
+    for (const cls of Object.keys(CLASSES)) {
+      const av = buildChibi(cls, 0xe8c98a);
+      av.g.rotation.y = 0.4; for (const a of av.arms) a.g.rotation.z = a.s * 0.2;
+      sc.add(av.g); r.render(sc, cam);
+      $('img-' + cls).src = r.domElement.toDataURL('image/png');
+      sc.remove(av.g); av.g.traverse((o) => { if (o.material) { if (o.material.map) o.material.map.dispose(); o.material.dispose(); } if (o.geometry) o.geometry.dispose(); });
+    }
+    r.dispose(); r.forceContextLoss();
+  } catch { /* the cards still work without pictures */ }
+}
+renderPortraits();
+game.debug = { goHome, toggleBag, eat, zones, coop, toggleCoop, music, Q, applyQ, setQMode, world, scene, renderer, camera, composer, attack, cast, selectSpell, eat, dodge, travel, begin, setStance, atkPress, atkRelease, saveGame, readSave, input, bolts, rig: { sword, staff, bowArm, shieldArm, nock },
   /** Advance the simulation by n fixed frames (for automated checks). */
   step: (n = 60) => { for (let i = 0; i < n; i++) { lastDayT = update(1 / 60); updateFx(1 / 60); } updateHud(lastDayT); } };
 selectSpell(0);
